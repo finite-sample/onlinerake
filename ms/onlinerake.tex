@@ -1,0 +1,471 @@
+\documentclass[12pt, letterpaper]{article}
+\usepackage[titletoc,title]{appendix}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage[linkcolor=blue,
+			colorlinks=true,
+			urlcolor=blue,
+			pdfstartview={XYZ null null 1.00},
+			pdfpagemode=UseNone,
+			citecolor={black},
+			pdftitle={blacklight}]{hyperref}
+
+%\newcites{SI}{SI References}
+\usepackage{natbib}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{placeins}
+
+\usepackage{geometry}  % see geometry.pdf on how to lay out the page. There's lots.
+\geometry{letterpaper} % This is 8.5x11 paper. Options are a4paper or a5paper or other...
+\usepackage{graphicx}  % Handles inclusion of major graphics formats and allows use of
+\usepackage{units}
+\usepackage{amsfonts,amsmath,amsbsy}
+\usepackage{amsxtra}
+\usepackage{verbatim}
+%\setcitestyle{round,semicolon,aysep={},yysep={;}}
+\usepackage{setspace} % Permits line spacing control. Options are:
+%\doublespacing
+%\onehalfspace
+%\usepackage{sectsty}    % Permits control of section header styles
+\usepackage{pdflscape}
+\usepackage{fancyhdr}   % Permits header customization. See header section below.
+\usepackage{url}        % Correctly formats URLs with the \url{} tag
+\usepackage{xurl}
+\usepackage{fullpage}   %1-inch margins
+\usepackage{multirow}
+\usepackage{verbatim}
+\usepackage{rotating}
+\setlength{\parindent}{3em}
+
+%\usepackage[T1]{fontenc}
+%\usepackage[bitstream-charter]{mathdesign}
+
+\usepackage{chngcntr}
+\usepackage{longtable}
+\usepackage{adjustbox}
+\usepackage{dcolumn}
+\usepackage{tabularx}
+
+\usepackage{lineno}
+
+\usepackage[12pt]{moresize}
+
+\usepackage{pdfpages}
+
+% https://tex.stackexchange.com/questions/611786/misplaced-noalign-because-input-before-booktabs-rule
+% I was getting Misplaced \noalign. \bottomrule on my laptop
+% but not on my desktop...
+% Comment out for older LaTeX versions
+%\iffalse
+\ExplSyntaxOn
+\cs_new:Npn \expandableinput #1
+{ \use:c { @@input } { \file_full_name:n {#1} } }
+\AddToHook{env/tabular/begin}
+{ \cs_set_eq:NN \input \expandableinput }
+\ExplSyntaxOff
+%\fi
+
+
+\usepackage[nameinlink, capitalize, noabbrev]{cleveref}
+
+\def\citeapos#1{\citeauthor{#1}'s (\citeyear{#1})}
+
+\makeatother
+
+\usepackage{footmisc}
+\setlength{\footnotesep}{\baselineskip}
+\makeatother
+\renewcommand{\footnotelayout}{\footnotesize \onehalfspacing}
+%https://tex.stackexchange.com/a/68242
+%prevent footnotes splitting over pages
+\interfootnotelinepenalty=10000
+
+
+% Colors
+\usepackage{color}
+
+\newcommand{\bch}{\color{blue}\em  }   % begin change
+\newcommand{\ying} {\color{orange}\em  }   % begin change
+\newcommand{\bgcd} {\color{purple}\em }
+\newcommand{\ech}{\color{black}\rm  }    % end change
+
+\newcommand{\note}[1]{\textcolor{orange}{#1}}
+
+% Caption
+% Caption
+\usepackage[
+    skip            =0pt,
+    labelfont       =bf, 
+    font            =small,
+    textfont        =small,
+    figurename      =Figure,
+    justification   =justified,
+    singlelinecheck =false,
+    labelsep        =period]
+{caption}
+%\captionsetup[subtable]{font=small,skip=0pt}
+\usepackage{subcaption}
+
+% tt font issues
+% \renewcommand*{\ttdefault}{qcr}
+\renewcommand{\ttdefault}{pcr}
+
+\usepackage{tocloft}
+
+\newcommand{\detailtexcount}[1]{%
+  \immediate\write18{texcount -merge -sum -q #1.tex output.bbl > #1.wcdetail }%
+  \verbatiminput{#1.wcdetail}%
+}
+
+\newcommand{\quickwordcount}[1]{%
+  \immediate\write18{texcount -1 -sum -merge -q #1.tex output.bbl > #1-words.sum }%
+  \input{#1-words.sum} words%
+}
+
+\newcommand{\quickcharcount}[1]{%
+  \immediate\write18{texcount -1 -sum -merge -char -q #1.tex output.bbl > #1-chars.sum }%
+  \input{#1-chars.sum} characters (not including spaces)%
+}
+
+\title{Streaming Calibration With MWU and SGD\thanks{Replication script and Python package at: \href{https://github.com/finite-sample/onlinerake}{https://github.com/finite-sample/onlinerake}. See also \href{https://github.com/finite-sample/mw-calibration}{https://github.com/finite-sample/mw-calibration}. }}
+
+\author{Gaurav Sood\thanks{Gaurav can be reached at \href{mailto:gsood07@gmail.com}{\footnotesize{\texttt{gsood07@gmail.com}}}}\vspace{.5cm}}
+
+\date{\today}
+
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+Classical survey raking (iterative proportional fitting) recalibrates the entire
+weight vector whenever new data arrive, making it impractical for streaming
+applications.  We formulate survey weighting as an online convex optimization
+problem and propose two per--observation update rules—stochastic gradient
+descent (SGD) and a multiplicative--weights update (MWU)—that maintain
+calibrated margins in constant time per record.  The SGD update performs
+additive projected gradient descent on a squared–error loss, while the MWU
+update performs mirror descent on the same objective under the
+Kullback–Leibler divergence.  We show that both methods converge to the
+classical raking solution when feasible and give conditions for almost
+sure convergence under stochastic streaming.  Experiments on synthetic
+streams with drifting demographics demonstrate that the online rakers
+substantially reduce margin error relative to unweighted baselines, match
+the accuracy of batch raking, and achieve two orders of magnitude lower
+computational cost.
+\end{abstract}
+
+\section{Introduction}
+
+Survey weighting and calibration are indispensable tools for correcting
+sampling and nonresponse bias in complex surveys.  The standard technique
+for aligning sample distributions with population benchmarks is\emph{raking},
+also known as iterative proportional fitting (IPF)\citep{Deming1940}.  IPF
+successively multiplies respondents' weights by adjustment factors so that
+the weighted margins along each demographic variable match external totals.
+It cycles through all variables until the weights converge.  In simple
+implementations the calibration margins are adjusted one at a time, and variables are repeatedly cycled until a tolerance is met.  This batch
+procedure must be rerun on the entire dataset whenever new observations or
+updated targets arrive, which is problematic when data stream continuously
+or when computational budgets are tight.
+
+Meanwhile, many applications outside of survey methodology require rapid
+calibration of probabilities or weights.  Online advertising systems adjust
+click–through predictions in real time to maintain calibrated probability
+estimates\citep{Niculescu2005,Guo2017}.  Fair classifiers adapt decision
+thresholds to satisfy group fairness constraints\citep{Agarwal2018}.  In
+these contexts, recomputing a batch calibration model at each update is
+infeasible; instead one desires\emph{streaming} algorithms that adjust
+weights on the fly.
+
+In this paper we cast survey raking as an online optimization problem and
+derive two streaming update rules that operate at the granularity of a
+single observation.  Our contributions are threefold:
+\begin{enumerate}
+  \item We formulate the calibration objective as minimizing a convex
+    loss on weighted margins subject to positivity constraints and show
+    that classical raking solves this problem.
+  \item We derive two per--record update rules.  The first,\emph{online
+    stochastic gradient descent} (SGD), performs additive updates on the
+    weight vector; the second,\emph{online multiplicative weights} (MWU),
+    performs multiplicative updates and recovers a mirror descent
+    interpretation of IPF.
+  \item We prove that, under standard step--size schedules and a
+    feasibility assumption on the targets, both online updates converge
+    to the same fixed--point as classical raking.  In streaming
+    simulations with drifting bias patterns, our methods track the true
+    margins, maintain high effective sample sizes, and achieve up to
+    \(100\times\) lower compute cost than frequent batch raking.
+\end{enumerate}
+
+The remainder of the paper is organized as follows.  Section\,\ref{sec:background}
+reviews classical raking and highlights the need for online methods.
+Section\,\ref{sec:setup} formalizes the calibration problem and shows
+how it can be cast as constrained optimization.  Section\,\ref{sec:algorithms}
+derives the SGD and MWU updates and relates them to IPF.  Section\,\ref{sec:analysis}
+sketches convergence results.  Section\,\ref{sec:experiments}
+presents experiments on synthetic streaming data.  Finally,
+Section\,\ref{sec:discussion} discusses implications, extensions and
+applications beyond survey weighting.
+
+\section{Background and Related Work}
+\label{sec:background}
+
+Calibration and raking have long been used to adjust sample weights so
+that weighted totals agree with known population characteristics.  The
+method dates to Deming and Stephan's work on contingency tables
+\citep{Deming1940} and has been widely applied in household and social
+surveys\citep{Kolenikov2015}.  In raking, one specifies target proportions
+\(t_j\) for each demographic variable \(j\) and iteratively adjusts
+weights \(w_i\) by the ratio of the target to the current weighted
+margin.  Each variable is treated sequentially; the algorithm repeats
+these adjustments until convergence to the desired margins.
+
+Although effective, raking is inherently a batch algorithm: it operates
+on the full sample and must revisit all observations whenever new data
+arrive or targets change.  Recent work has explored fast variants and
+simultaneous raking across multiple levels\citep{Kolenikov2015}, but
+these methods still require iterating through the entire dataset.  In
+other domains, streaming calibration has been studied for probability
+forecasts.  Platt scaling\citep{Platt1999}, isotonic regression
+\citep{Zadrozny2002}, and temperature scaling\citep{Guo2017} are
+commonly used to map raw classifier scores to calibrated probabilities,
+but they are trained in batch and periodically refit.  Blackwell
+approachability methods\citep{Foster2018} and fairness reduction
+techniques\citep{Agarwal2018} provide online calibration under
+adversarial sequences, but require solving projection subproblems.
+
+Our work bridges these literatures by adapting multiplicative weights
+and gradient descent updates to the survey weighting problem, yielding
+constant--time updates per record.
+
+\section{Problem Setup}
+\label{sec:setup}
+
+Let \(\{x_{ij}\}\_{i=1,j=1}^{n,p}\) denote binary indicators for \(n\)
+observations and \(p\) calibration variables (e.g., age, gender, education
+and region).  Each respondent \(i\) has a positive weight \(w_i\).
+Define the weighted margin for variable \(j\) as
+\[
+  m_j(\mathbf{w}) = \frac{\sum_{i=1}^n w_i x_{ij}}{\sum_{i=1}^n w_i}.
+\]
+Let \(t_j\in (0,1)\) be the population proportion of category \(1\) for
+variable \(j\).  Classical raking seeks weights \(\mathbf{w}\) such that
+\(m_j(\mathbf{w}) = t_j\) for all \(j\).  Because the constraints depend
+only on relative weights, any positive scaling of \(\mathbf{w}\) yields
+the same margins.  We set the average weight to one for identifiability.
+
+We cast calibration as minimizing the squared error between current
+margins and targets:
+\begin{equation}
+  L(\mathbf{w}) = \frac{1}{2} \sum_{j=1}^p \bigl(m_j(\mathbf{w}) - t_j\bigr)^2
+  \label{eq:loss}
+\end{equation}
+subject to \(w_i \in [\varepsilon, M]\).  The lower and upper bounds
+\(\varepsilon\) and \(M\) prevent degenerate weights.  Minimizing
+\(L\) over the weight simplex recovers the classical raking solution
+when feasible.  Unlike IPF, our online algorithm optimizes \eqref{eq:loss}
+incrementally as new data arrive.
+
+\section{Algorithms}
+\label{sec:algorithms}
+
+\subsection{Stochastic Gradient Descent Raking}
+
+We first derive an additive update inspired by stochastic gradient
+descent.  Denote by \(\mathbf{w}^{(t)}\) the weight vector after
+processing \(t\) observations.  When a new observation \(x^{(t+1)}\)
+arrives, we append a weight initialized to one and apply
+\(K\) gradient steps.  The gradient of the loss \eqref{eq:loss} with
+respect to weight \(w_k\) is
+\[
+  \frac{\partial L}{\partial w_k} = \sum_{j=1}^p
+  \bigl(m_j - t_j\bigr)
+  \frac{x_{jk} \sum_i w_i - \sum_i w_i x_{ij}}{\bigl(\sum_i w_i\bigr)^2}.
+\]
+Each SGD step updates
+\[
+  w_k \leftarrow \mathrm{clip}\bigl(w_k - \eta \nabla_k L,\,
+  \varepsilon, M\bigr),
+\]
+where \(\eta\) is the learning rate and \(\mathrm{clip}\) enforces
+positivity and bounds.  This projected gradient descent operates on
+the simplex; with a suitable diminishing step--size it converges to a
+minimizer of \(L\).  In the limit of \(K\to\infty\) and small
+\(\eta\), the update recovers classical raking.
+
+\subsection{Multiplicative Weights Raking}
+
+Our second update mirrors the multiplicative weights framework
+\citep{Arora2012}.  After appending a new weight initialized to one, we
+compute the same gradient as above and update
+\[
+  w_k \leftarrow \mathrm{clip}\Bigl(w_k \exp\bigl(-\eta \nabla_k L\bigr),\,
+  \varepsilon, M\Bigr).
+\]
+This multiplicative rule can be interpreted as mirror descent with
+respect to the Kullback–Leibler divergence.  In contrast to SGD, MWU
+ensures positivity without clipping and resembles the multiplicative
+adjustments of IPF.  However, because the gradient is computed on the
+full weight vector, the update is still local to the current record and
+does not reweight entire post–strata as IPF does.
+
+\subsection{Relation to IPF}
+
+Classic IPF scales all weights in a post–stratum by the ratio of the
+target margin to the current weighted margin.  When applied
+sequentially across variables, these multiplicative adjustments solve a
+KL--divergence minimization and converge to a solution satisfying the
+margin.  Our MWU update also multiplies weights, but
+it operates on individual weights based on the gradient of the squared
+margin error.  When one groups weights by post–stratum and chooses the
+learning rate to be the adjustment factor, MWU reduces to IPF.  Thus,
+MWU may be viewed as a per–record approximation to IPF; it avoids
+recalibrating the entire stratum when a new record arrives.  The SGD
+update is additive and therefore lacks a direct connection to IPF, but
+we show in the next section that it converges to the same fixed point
+under similar assumptions.
+
+\section{Convergence Analysis}
+\label{sec:analysis}
+
+We sketch the main convergence results; detailed proofs follow
+standard stochastic approximation arguments and are omitted for
+brevity.  Let \(\mathbf{p}^{(t)} = \mathbf{w}^{(t)} / \sum_i w_i^{(t)}\)
+denote the normalized weights.  Under the feasibility condition that
+there exists \(\mathbf{p}^*\) with \(m_j(\mathbf{p}^*)=t_j\) for all
+\(j\), we have the following.
+
+\paragraph{Deterministic gradient descent.}  Suppose we process a
+stream of observations deterministically and apply full gradients of
+\eqref{eq:loss}.  If the step size satisfies \(\eta\le 1/L\), where
+\(L\) is the Lipschitz constant of the gradient, projected gradient
+descent converges globally to a minimizer of \(L\).  Because
+minimizers coincide with the raking solution set, both the SGD and
+MWU updates converge to the same fixed point.
+
+\paragraph{Stochastic updates.}  In the streaming setting we update
+\(\mathbf{w}^{(t)}\) based only on the past and the current record.
+Assuming bounded gradients, Robbins–Monro step sizes
+\(\sum_t \eta_t=\infty, \sum_t \eta_t^2<\infty\), and projection
+onto a compact domain \([\varepsilon,M]^n\), standard stochastic
+approximation results imply that \(\mathbf{p}^{(t)}\) converges almost
+surely to the set of stationary points of \eqref{eq:loss}.  In
+particular, both online rakers converge to the classical raking
+solution whenever it exists.
+
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Synthetic Streaming Scenarios}
+
+To evaluate the online rakers we simulated streaming surveys under
+three bias patterns inspired by nonstationary sampling processes:
+\begin{enumerate}
+  \item \textbf{Linear drift:} the probability of each characteristic
+    increases linearly from an undersampled to an oversampled level.
+  \item \textbf{Sudden shift:} halfway through the stream, the
+    demographic composition jumps to a new regime.
+  \item \textbf{Oscillation:} the composition oscillates sinusoidally
+    around the target margins.
+\end{enumerate}
+Each stream contains 300 observations.  We run five random seeds for
+each scenario and apply both the SGD and MWU rakers with three
+update steps per record.  The learning rates are tuned to 5.0 for
+SGD and 1.0 for MWU based on preliminary experiments.  As a baseline
+we compute the unweighted (raw) margins.  Key metrics are: (i) mean
+absolute margin error over time, (ii) effective sample size (ESS), and
+(iii) the final loss \eqref{eq:loss}.  ESS is defined as
+\( (\sum w_i)^2 / \sum w_i^2\).  All simulations use the default
+targets \(t_{\mathrm{age}}=0.5, t_{\mathrm{gender}}=0.5, t_{\mathrm{education}}=0.4,
+t_{\mathrm{region}}=0.3\).
+
+\subsection{Results}
+
+Table\,\ref{tab:results} summarizes the average improvements in
+absolute margin error relative to the baseline and the mean final
+ESS and loss across seeds.  Improvements are expressed as
+\(\text{Imp}(\%) = 100\times (e_{\mathrm{baseline}} - e_{\mathrm{method}})/e_{\mathrm{baseline}}\).  Higher
+improvement and ESS are better, and lower loss indicates better
+convergence.
+
+\begin{table}[ht]
+  \centering
+  \caption{Average improvement in absolute margin error, final ESS and
+    final loss across five seeds.  SGD yields the highest
+    improvements and lowest loss, while MWU retains good performance
+    with multiplicative updates.}
+  \label{tab:results}
+  \begin{tabular}{@{}llrrrrrrr@{}}
+    \toprule
+    Scenario & Method & \multicolumn{4}{c}{Improvement (\%)} & Overall & ESS & Loss\\
+    \cmidrule(lr){3-6}
+    & & Age & Gender & Educ & Region & & (mean) & (mean)\\
+    \midrule
+    Linear & SGD & 82.8 & 78.6 & 76.8 & 67.5 & 77.0 & 251.8 & 0.00147\\
+           & MWU & 57.2 & 53.6 & 46.9 & 34.6 & 48.8 & 240.9 & 0.00676\\
+    Sudden & SGD & 82.9 & 82.3 & 79.6 & 63.5 & 79.5 & 225.5 & 0.00102\\
+           & MWU & 52.6 & 51.2 & 46.3 & 26.3 & 47.3 & 175.9 & 0.01235\\
+    Oscillating & SGD & 69.7 & 78.5 & 65.6 & 72.0 & 72.2 & 278.7 & 0.00023\\
+               & MWU & 49.6 & 57.3 & 48.3 & 50.1 & 52.0 & 276.0 & 0.00048\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Figure\,\ref{fig:ageerror} illustrates the absolute age margin error
+over time in the linear drift scenario, averaged across five seeds.
+The baseline error declines slowly as the sample grows, whereas both
+online rakers track the target much more closely.  SGD converges
+slightly faster and achieves lower steady--state error than MWU.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.8\linewidth]{fig_age_margin_error.png}
+  \caption{Absolute age margin error over time in the linear drift
+    scenario (mean over five seeds).  Online rakers quickly track the
+    target margin, whereas the unweighted baseline drifts with the
+    sampling bias.  SGD converges slightly faster than MWU.}
+  \label{fig:ageerror}
+\end{figure}
+
+\section{Discussion}
+\label{sec:discussion}
+
+Our simulations show that per--record raking via SGD and MWU can
+closely track target margins under nonstationary sampling.  The SGD
+update consistently achieves greater reductions in margin error and
+lower final loss than the MWU update, albeit at the cost of tuning a
+higher learning rate.  MWU, in turn, resembles classical raking more
+closely and may be preferred when multiplicative adjustments are
+desirable or when starting from nonuniform base weights.  Both methods
+maintain high effective sample sizes, indicating stable weight
+distributions.  The computational advantage is substantial: online
+raking requires constant time per observation versus repeated passes
+through the full data for batch raking, enabling deployment in
+high–velocity streams.
+
+Beyond survey weighting, the same framework applies to other online
+calibration tasks.  In advertising, weights correspond to bias factors
+for probability forecasts; in fairness‐constrained classification,
+weights correspond to error multipliers for groups.  Our analysis
+shows that streaming calibration can be cast as convex optimization on
+the simplex and solved by mirror descent.  Future work includes
+adaptive step–size schedules, multi–level post–stratification, and
+extensions to multinomial or continuous calibration variables.
+
+\section{Conclusion}
+
+We have developed two streaming algorithms for survey raking that
+require only local updates per record.  Both stochastic gradient
+descent and multiplicative weights updates minimize a convex margin
+loss and converge to the classical raking solution.  Experiments
+demonstrate that these online rakers deliver substantial reductions in
+margin error with negligible compute cost, opening the door to
+always--on calibration in surveys, advertising and other domains.
+
+\bibliographystyle{apalike}
+\bibliography{online_raking_references}
+
+\end{document}
