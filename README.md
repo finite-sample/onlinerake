@@ -1,6 +1,4 @@
-# `onlinerake`
-
-**Streaming survey raking in pure Python**
+## onlinerake: Streaming Survey Raking Via MWU and SGD
 
 Modern online surveys and passive data collection streams generate
 responses one record at a time.  Classic weighting methods such as
