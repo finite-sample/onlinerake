@@ -91,7 +91,7 @@ are better.
 * In all scenarios the online rakers dramatically reduce the margin
   errors relative to the unweighted baseline.  For example, in the
   sudden‑shift scenario the SGD raker reduces the average age error
-  from 0.20 to about 0.03 (a 83 % improvement).
+  from 0.20 to about 0.03 (a 83% improvement).
 * The SGD update consistently yields *higher* improvements and lower
   final loss than the MWU update, albeit at the cost of choosing a
   more aggressive learning rate.
