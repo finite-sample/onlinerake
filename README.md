@@ -1,5 +1,8 @@
 ## onlinerake: Streaming Survey Raking Via MWU and SGD
 
+[![PyPI version](https://img.shields.io/pypi/v/onlinerake.svg)](https://pypi.org/project/onlinerake/)
+[![PyPI Downloads](https://static.pepy.tech/badge/onlinerake)](https://pepy.tech/projects/onlinerake)
+
 Modern online surveys and passive data collection streams generate
 responses one record at a time.  Classic weighting methods such as
 iterative proportional fitting (IPF, or “raking”) and calibration
