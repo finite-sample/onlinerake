@@ -253,6 +253,7 @@ class OnlineRakingSGD:
             inspect the properties ``weights``, ``margins`` and ``loss``
             after the call for diagnostics.
         """
+
         # Convert to numeric binary indicators
         def _get_indicator(obj: Any, name: str) -> int:
             val = obj[name] if isinstance(obj, dict) else getattr(obj, name)

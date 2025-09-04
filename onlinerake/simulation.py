@@ -57,7 +57,9 @@ class BiasSimulator:
     """Simulate streams of demographic observations with evolving bias."""
 
     @staticmethod
-    def linear_shift(n_obs: int, start_probs: Dict[str, float], end_probs: Dict[str, float]) -> List[DemographicObservation]:
+    def linear_shift(
+        n_obs: int, start_probs: Dict[str, float], end_probs: Dict[str, float]
+    ) -> List[DemographicObservation]:
         """Generate a linear drift from ``start_probs`` to ``end_probs``.
 
         Each probability dict should map demographic names to the
@@ -68,7 +70,8 @@ class BiasSimulator:
         for i in range(n_obs):
             progress = i / (n_obs - 1) if n_obs > 1 else 0.0
             probs = {
-                name: start_probs[name] + progress * (end_probs[name] - start_probs[name])
+                name: start_probs[name]
+                + progress * (end_probs[name] - start_probs[name])
                 for name in start_probs
             }
             obs = DemographicObservation(
@@ -81,7 +84,12 @@ class BiasSimulator:
         return data
 
     @staticmethod
-    def sudden_shift(n_obs: int, shift_point: float, before_probs: Dict[str, float], after_probs: Dict[str, float]) -> List[DemographicObservation]:
+    def sudden_shift(
+        n_obs: int,
+        shift_point: float,
+        before_probs: Dict[str, float],
+        after_probs: Dict[str, float],
+    ) -> List[DemographicObservation]:
         """Generate a sudden shift at ``shift_point`` fraction of the stream."""
         data: List[DemographicObservation] = []
         shift_index = int(shift_point * n_obs)
@@ -97,7 +105,9 @@ class BiasSimulator:
         return data
 
     @staticmethod
-    def oscillating_bias(n_obs: int, base_probs: Dict[str, float], amplitude: float, period: int) -> List[DemographicObservation]:
+    def oscillating_bias(
+        n_obs: int, base_probs: Dict[str, float], amplitude: float, period: int
+    ) -> List[DemographicObservation]:
         """Generate an oscillating bias around ``base_probs``.
 
         Probabilities oscillate sinusoidally with amplitude ``amplitude``
@@ -166,8 +176,18 @@ def run_simulation_suite(
             "sim_fn": BiasSimulator.linear_shift,
             "params": {
                 "n_obs": n_obs,
-                "start_probs": {"age": 0.2, "gender": 0.3, "education": 0.2, "region": 0.1},
-                "end_probs": {"age": 0.8, "gender": 0.7, "education": 0.6, "region": 0.5},
+                "start_probs": {
+                    "age": 0.2,
+                    "gender": 0.3,
+                    "education": 0.2,
+                    "region": 0.1,
+                },
+                "end_probs": {
+                    "age": 0.8,
+                    "gender": 0.7,
+                    "education": 0.6,
+                    "region": 0.5,
+                },
             },
         },
         "sudden": {
@@ -175,15 +195,30 @@ def run_simulation_suite(
             "params": {
                 "n_obs": n_obs,
                 "shift_point": 0.5,
-                "before_probs": {"age": 0.2, "gender": 0.2, "education": 0.2, "region": 0.2},
-                "after_probs": {"age": 0.8, "gender": 0.8, "education": 0.6, "region": 0.4},
+                "before_probs": {
+                    "age": 0.2,
+                    "gender": 0.2,
+                    "education": 0.2,
+                    "region": 0.2,
+                },
+                "after_probs": {
+                    "age": 0.8,
+                    "gender": 0.8,
+                    "education": 0.6,
+                    "region": 0.4,
+                },
             },
         },
         "oscillating": {
             "sim_fn": BiasSimulator.oscillating_bias,
             "params": {
                 "n_obs": n_obs,
-                "base_probs": {"age": 0.5, "gender": 0.5, "education": 0.4, "region": 0.3},
+                "base_probs": {
+                    "age": 0.5,
+                    "gender": 0.5,
+                    "education": 0.4,
+                    "region": 0.3,
+                },
                 "amplitude": 0.2,
                 "period": max(50, n_obs // 4),
             },
@@ -227,14 +262,26 @@ def run_simulation_suite(
                 # build arrays of errors for each time step
                 for demo in ["age", "gender", "education", "region"]:
                     target_val = getattr(targets, demo)
-                    weighted_errors = [abs(h["weighted_margins"][demo] - target_val) for h in raker.history]
-                    raw_errors = [abs(h["raw_margins"][demo] - target_val) for h in raker.history]
-                    temporal_errors[f"{demo}_temporal_error"] = float(np.mean(weighted_errors))
-                    baseline_errors[f"{demo}_temporal_baseline_error"] = float(np.mean(raw_errors))
+                    weighted_errors = [
+                        abs(h["weighted_margins"][demo] - target_val)
+                        for h in raker.history
+                    ]
+                    raw_errors = [
+                        abs(h["raw_margins"][demo] - target_val) for h in raker.history
+                    ]
+                    temporal_errors[f"{demo}_temporal_error"] = float(
+                        np.mean(weighted_errors)
+                    )
+                    baseline_errors[f"{demo}_temporal_baseline_error"] = float(
+                        np.mean(raw_errors)
+                    )
 
                 avg_temporal_loss = float(np.mean([h["loss"] for h in raker.history]))
                 ess_final = float(final_state["ess"])
-                weight_range = float(final_state["weight_stats"]["max"] - final_state["weight_stats"]["min"])
+                weight_range = float(
+                    final_state["weight_stats"]["max"]
+                    - final_state["weight_stats"]["min"]
+                )
                 result = {
                     "scenario": scenario_name,
                     "seed": seed,
@@ -275,11 +322,25 @@ def analyze_results(df: pd.DataFrame) -> None:
                 mean_w = mdf[f"{demo}_temporal_error"].mean()
                 mean_b = mdf[f"{demo}_temporal_baseline_error"].mean()
                 impr = (mean_b - mean_w) / mean_b * 100 if mean_b != 0 else 0.0
-                print(f"    {demo:<10}: baseline {mean_b:.4f} -> weighted {mean_w:.4f} ({impr:+.1f}% imp)")
+                print(
+                    f"    {demo:<10}: baseline {mean_b:.4f} -> weighted {mean_w:.4f} ({impr:+.1f}% imp)"
+                )
             # aggregated improvement
-            mean_w_overall = mdf[[f"{d}_temporal_error" for d in demo_names]].values.mean()
-            mean_b_overall = mdf[[f"{d}_temporal_baseline_error" for d in demo_names]].values.mean()
-            overall_impr = (mean_b_overall - mean_w_overall) / mean_b_overall * 100 if mean_b_overall != 0 else 0.0
+            mean_w_overall = mdf[
+                [f"{d}_temporal_error" for d in demo_names]
+            ].values.mean()
+            mean_b_overall = mdf[
+                [f"{d}_temporal_baseline_error" for d in demo_names]
+            ].values.mean()
+            overall_impr = (
+                (mean_b_overall - mean_w_overall) / mean_b_overall * 100
+                if mean_b_overall != 0
+                else 0.0
+            )
             print(f"    Overall improvement: {overall_impr:+.1f}%")
-            print(f"    Final ESS: mean {mdf['final_ess'].mean():.1f}, std {mdf['final_ess'].std():.1f}")
-            print(f"    Final loss: mean {mdf['final_loss'].mean():.4f}, std {mdf['final_loss'].std():.4f}")
+            print(
+                f"    Final ESS: mean {mdf['final_ess'].mean():.1f}, std {mdf['final_ess'].std():.1f}"
+            )
+            print(
+                f"    Final loss: mean {mdf['final_loss'].mean():.4f}, std {mdf['final_loss'].std():.4f}"
+            )
