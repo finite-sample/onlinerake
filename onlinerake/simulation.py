@@ -25,7 +25,7 @@ observations or seeds.  Adjust ``n_obs`` and ``n_seeds`` as needed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Callable, Iterable
+from typing import Dict, List, Tuple, Callable, Iterable, Optional, Any
 
 import numpy as np
 import pandas as pd

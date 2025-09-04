@@ -166,7 +166,7 @@ class OnlineRakingSGD:
     def effective_sample_size(self) -> float:
         """Return the effective sample size (ESS).
 
-        ESS is defined as \((\sum w_i)^2 / \sum w_i^2\).  It reflects
+        ESS is defined as (sum w_i)^2 / (sum w_i^2).  It reflects
         the number of equally weighted observations that would yield the
         same variance as the current weighted estimator.
         """

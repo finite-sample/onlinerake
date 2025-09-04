@@ -1,0 +1,53 @@
+Changelog
+=========
+
+All notable changes to this project will be documented in this file.
+
+The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
+and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
+
+[Unreleased]
+------------
+
+**Added**
+- Comprehensive test suite with 15+ test cases
+- Realistic examples for common use cases
+- Complete documentation with Sphinx
+- CI/CD workflows for testing and publishing
+- Code formatting and linting checks
+
+**Fixed**
+- Import errors for Optional and Any types in simulation module
+- Improved docstring formatting and clarity
+
+[0.1.1] - 2024-XX-XX
+--------------------
+
+**Added**
+- Initial release of onlinerake package
+- SGD-based streaming raking algorithm (OnlineRakingSGD)
+- MWU-based streaming raking algorithm (OnlineRakingMWU)
+- Targets dataclass for population margins
+- Simulation module for benchmarking algorithms
+- Basic README with usage examples
+
+**Features**
+- Real-time weight calibration for streaming survey data
+- scikit-learn style partial_fit API
+- Support for binary demographic indicators (age, gender, education, region)
+- Effective sample size and loss monitoring
+- Weight clipping to prevent numerical issues
+- Comprehensive margin tracking and reporting
+
+**Dependencies**
+- numpy >= 1.21
+- pandas >= 1.3
+- Python >= 3.8
+
+[0.1.0] - Initial Development
+-----------------------------
+
+**Added**
+- Core algorithm implementations
+- Basic project structure
+- Initial documentation

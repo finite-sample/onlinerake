@@ -1,0 +1,70 @@
+# Comprehensive CI/CD pipeline for onlinerake package
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+  release:
+    types: [ published ]
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install flake8 black pytest pytest-cov
+        pip install -e .
+        
+    - name: Lint with flake8
+      run: |
+        # Stop build on syntax errors or undefined names
+        flake8 onlinerake --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Check for other issues with relaxed settings
+        flake8 onlinerake --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+        
+    - name: Check code formatting with black
+      run: |
+        black --check --diff onlinerake
+        
+    - name: Run tests with coverage
+      run: |
+        pytest tests/test_onlinerake.py --cov=onlinerake --cov-report=xml --cov-report=term
+        
+    - name: Run simulation tests
+      run: |
+        python -m onlinerake.simulation
+        python examples/realistic_examples.py
+        
+    - name: Upload coverage to Codecov
+      if: matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
