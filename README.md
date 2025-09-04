@@ -29,10 +29,16 @@ and `.effective_sample_size` to monitor progress.
 
 ## Installation
 
-Clone or download this repository and install in editable mode:
+Install from PyPI:
 
 ```bash
-git clone <repo-url>
+pip install onlinerake
+```
+
+For development, clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/finite-sample/onlinerake.git
 cd onlinerake
 pip install -e .
 ```
@@ -109,6 +115,27 @@ python -m onlinerake.simulation
 
 from the repository root.  See the source of
 `onlinerake/simulation.py` for details.
+
+## Examples
+
+Realistic usage examples are provided in `examples/realistic_examples.py`, including:
+- Correcting gender bias in online surveys
+- Real-time polling with demographic shifts  
+- Performance comparison between SGD and MWU algorithms
+
+Run the examples:
+
+```bash
+python examples/realistic_examples.py
+```
+
+## Testing
+
+Run the comprehensive test suite:
+
+```bash
+pytest tests/test_onlinerake.py -v
+```
 
 ## Contributing
 
