@@ -1,0 +1,86 @@
+# Test Suite
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install pytest pytest-cov black flake8
+
+    - name: Run code quality checks
+      run: |
+        # Check code formatting with black
+        black --check onlinerake tests
+        
+        # Check for flake8 errors
+        flake8 onlinerake --count --select=E9,F63,F7,F82 --show-source --statistics
+        
+        # Additional flake8 warnings
+        flake8 onlinerake --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run tests with coverage
+      run: |
+        pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term --cov-report=xml
+
+    - name: Upload coverage to Codecov
+      if: matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+        verbose: true
+
+  test-examples:
+    name: Test Examples
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+
+    - name: Run simulation examples
+      run: |
+        python -m onlinerake.simulation
+        
+    - name: Run realistic examples
+      run: |
+        python examples/realistic_examples.py
