@@ -2,6 +2,8 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/onlinerake.svg)](https://pypi.org/project/onlinerake/)
 [![PyPI Downloads](https://static.pepy.tech/badge/onlinerake)](https://pepy.tech/projects/onlinerake)
+[![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://finite-sample.github.io/onlineranke/)
+[![Python application](https://github.com/finite-sample/onlinerake/actions/workflows/ci.yml/badge.svg)](https://github.com/finite-sample/rmcp/actions/workflows/ci.yml)
 
 Modern online surveys and passive data collection streams generate
 responses one record at a time.  Classic weighting methods such as
