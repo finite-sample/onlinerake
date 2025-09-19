@@ -86,6 +86,9 @@ class OnlineRakingSGD:
         min_weight: float = 1e-3,
         max_weight: float = 100.0,
         n_sgd_steps: int = 3,
+        verbose: bool = False,
+        track_convergence: bool = True,
+        convergence_window: int = 20,
     ) -> None:
         if learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
@@ -95,12 +98,17 @@ class OnlineRakingSGD:
             raise ValueError("max_weight must exceed min_weight")
         if n_sgd_steps < 1:
             raise ValueError("n_sgd_steps must be a positive integer")
+        if convergence_window < 1:
+            raise ValueError("convergence_window must be a positive integer")
 
         self.targets = targets
         self.learning_rate = learning_rate
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.n_sgd_steps = n_sgd_steps
+        self.verbose = verbose
+        self.track_convergence = track_convergence
+        self.convergence_window = convergence_window
 
         # internal state
         self._weights: np.ndarray = np.empty(0, dtype=float)
@@ -113,6 +121,12 @@ class OnlineRakingSGD:
 
         # history: list of metric dicts recorded after each update
         self.history: list[Dict[str, Any]] = []
+        
+        # convergence tracking
+        self._loss_history: list[float] = []
+        self._gradient_norms: list[float] = []
+        self._converged: bool = False
+        self._convergence_step: Optional[int] = None
 
     # ------------------------------------------------------------------
     # Utility properties
@@ -177,6 +191,115 @@ class OnlineRakingSGD:
         sum_w2 = (w * w).sum()
         return float((sum_w * sum_w) / sum_w2) if sum_w2 > 0 else 0.0
 
+    @property
+    def converged(self) -> bool:
+        """Return True if the algorithm has detected convergence."""
+        return self._converged
+
+    @property
+    def convergence_step(self) -> Optional[int]:
+        """Return the step number where convergence was detected, if any."""
+        return self._convergence_step
+
+    @property
+    def loss_moving_average(self) -> float:
+        """Return moving average of loss over convergence window."""
+        if len(self._loss_history) == 0:
+            return np.nan
+        window_size = min(self.convergence_window, len(self._loss_history))
+        return float(np.mean(self._loss_history[-window_size:]))
+
+    @property
+    def gradient_norm_history(self) -> list[float]:
+        """Return history of gradient norms for convergence analysis."""
+        return self._gradient_norms.copy()
+
+    @property
+    def weight_distribution_stats(self) -> Dict[str, float]:
+        """Return comprehensive weight distribution statistics."""
+        if self._n_obs == 0:
+            return {k: np.nan for k in ["min", "max", "mean", "std", "median", "q25", "q75", "outliers_count"]}
+        
+        w = self._weights
+        q25, median, q75 = np.percentile(w, [25, 50, 75])
+        iqr = q75 - q25
+        outlier_threshold = 1.5 * iqr
+        outliers_count = np.sum((w < (q25 - outlier_threshold)) | (w > (q75 + outlier_threshold)))
+        
+        return {
+            "min": float(w.min()),
+            "max": float(w.max()),
+            "mean": float(w.mean()),
+            "std": float(w.std()),
+            "median": float(median),
+            "q25": float(q25),
+            "q75": float(q75),
+            "outliers_count": int(outliers_count),
+        }
+
+    def detect_oscillation(self, threshold: float = 0.1) -> bool:
+        """Detect if loss is oscillating rather than converging.
+        
+        Parameters
+        ----------
+        threshold : float
+            Relative threshold for detecting oscillation vs trend.
+            
+        Returns
+        -------
+        bool
+            True if oscillation is detected in recent loss history.
+        """
+        if len(self._loss_history) < self.convergence_window:
+            return False
+            
+        recent_losses = self._loss_history[-self.convergence_window:]
+        
+        # Calculate variance in recent losses
+        loss_variance = np.var(recent_losses)
+        mean_loss = np.mean(recent_losses)
+        
+        # Check if variance is high relative to mean (indicating oscillation)
+        if mean_loss > 0:
+            cv = np.sqrt(loss_variance) / mean_loss
+            return bool(cv > threshold)
+        return False
+
+    def check_convergence(self, tolerance: float = 1e-6) -> bool:
+        """Check if algorithm has converged based on loss stability.
+        
+        Parameters
+        ----------
+        tolerance : float
+            Convergence tolerance for loss stability.
+            
+        Returns
+        -------
+        bool
+            True if convergence is detected.
+        """
+        if self._converged or len(self._loss_history) < self.convergence_window:
+            return self._converged
+            
+        recent_losses = self._loss_history[-self.convergence_window:]
+        
+        # Check if loss has stabilized (low variance in recent window)
+        loss_std = np.std(recent_losses)
+        mean_loss = np.mean(recent_losses)
+        
+        # Convergence if relative standard deviation is below tolerance
+        if mean_loss > 0:
+            relative_std = loss_std / mean_loss
+            if relative_std < tolerance:
+                if not self._converged:
+                    self._converged = True
+                    self._convergence_step = self._n_obs
+                    if self.verbose:
+                        print(f"Convergence detected at observation {self._n_obs}")
+                return True
+        
+        return False
+
     # ------------------------------------------------------------------
     # Core logic
     # ------------------------------------------------------------------
@@ -218,22 +341,32 @@ class OnlineRakingSGD:
             gradients += loss_grad
         return gradients
 
-    def _record_state(self) -> None:
+    def _record_state(self, gradient_norm: Optional[float] = None) -> None:
         """Record current metrics to history."""
+        current_loss = self.loss
+        self._loss_history.append(current_loss)
+        
+        # Store gradient norm if provided
+        if gradient_norm is not None:
+            self._gradient_norms.append(gradient_norm)
+        
         state = {
             "n_obs": self._n_obs,
-            "loss": self.loss,
+            "loss": current_loss,
             "weighted_margins": self.margins,
             "raw_margins": self.raw_margins,
             "ess": self.effective_sample_size,
-            "weight_stats": {
-                "min": float(self._weights.min()) if self._n_obs > 0 else np.nan,
-                "max": float(self._weights.max()) if self._n_obs > 0 else np.nan,
-                "mean": float(self._weights.mean()) if self._n_obs > 0 else np.nan,
-                "std": float(self._weights.std()) if self._n_obs > 0 else np.nan,
-            },
+            "weight_stats": self.weight_distribution_stats,
+            "gradient_norm": gradient_norm if gradient_norm is not None else np.nan,
+            "loss_moving_avg": self.loss_moving_average,
+            "converged": self.converged,
+            "oscillating": self.detect_oscillation() if self.track_convergence else False,
         }
         self.history.append(state)
+        
+        # Check convergence if tracking is enabled
+        if self.track_convergence and not self._converged:
+            self.check_convergence()
 
     def partial_fit(self, obs: Any) -> None:
         """Consume a single observation and update weights.
@@ -277,14 +410,26 @@ class OnlineRakingSGD:
             self._weights = np.append(self._weights, 1.0)
 
         # perform n_sgd_steps updates
-        for _ in range(self.n_sgd_steps):
+        final_gradient_norm = 0.0
+        for step in range(self.n_sgd_steps):
             grad = self._compute_gradient()
+            
+            # Calculate gradient norm for convergence monitoring
+            gradient_norm = float(np.linalg.norm(grad))
+            if step == self.n_sgd_steps - 1:  # Store only final gradient norm
+                final_gradient_norm = gradient_norm
+            
             self._weights -= self.learning_rate * grad
             # clip weights
             np.clip(self._weights, self.min_weight, self.max_weight, out=self._weights)
+            
+            # Verbose output for debugging
+            if self.verbose and self._n_obs % 100 == 0 and step == 0:
+                print(f"Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
+                      f"ess={self.effective_sample_size:.1f}")
 
-        # record state
-        self._record_state()
+        # record state with final gradient norm
+        self._record_state(gradient_norm=final_gradient_norm)
 
     # alias for consistency with MWU version
     fit_one = partial_fit

@@ -161,6 +161,151 @@ class TestOnlineRakingMWU:
         assert raker.weights[0] >= 0.1
         assert raker.weights[0] <= 10.0
 
+    def test_mwu_diagnostics(self):
+        """Test that MWU inherits diagnostics features."""
+        targets = Targets()
+        raker = OnlineRakingMWU(targets, verbose=False, track_convergence=True)
+
+        obs = {"age": 1, "gender": 0, "education": 1, "region": 0}
+        raker.partial_fit(obs)
+
+        # Test that MWU has all diagnostic features
+        assert len(raker.gradient_norm_history) == 1
+        assert not np.isnan(raker.loss_moving_average)
+        assert isinstance(raker.weight_distribution_stats, dict)
+        assert isinstance(raker.converged, bool)
+        assert isinstance(raker.detect_oscillation(), bool)
+
+
+class TestDiagnosticsAndMonitoring:
+    """Test enhanced diagnostics and monitoring features."""
+
+    def test_sgd_diagnostics_comprehensive(self):
+        """Test comprehensive diagnostics for SGD raker."""
+        targets = Targets()
+        raker = OnlineRakingSGD(
+            targets, 
+            learning_rate=2.0,
+            verbose=False,
+            track_convergence=True,
+            convergence_window=5
+        )
+
+        # Generate observations that should converge quickly
+        observations = [
+            {"age": 0, "gender": 1, "education": 0, "region": 1},
+            {"age": 1, "gender": 0, "education": 1, "region": 0},
+            {"age": 0, "gender": 1, "education": 0, "region": 1},
+            {"age": 1, "gender": 0, "education": 1, "region": 0},
+            {"age": 0, "gender": 1, "education": 1, "region": 0},
+            {"age": 1, "gender": 0, "education": 0, "region": 1},
+        ]
+
+        for obs in observations:
+            raker.partial_fit(obs)
+
+        # Test gradient norm tracking
+        assert len(raker.gradient_norm_history) == len(observations)
+        assert all(norm >= 0 for norm in raker.gradient_norm_history)
+
+        # Test loss moving average
+        assert not np.isnan(raker.loss_moving_average)
+        assert raker.loss_moving_average >= 0
+
+        # Test weight distribution statistics
+        weight_stats = raker.weight_distribution_stats
+        expected_keys = {"min", "max", "mean", "std", "median", "q25", "q75", "outliers_count"}
+        assert set(weight_stats.keys()) == expected_keys
+        assert weight_stats["min"] <= weight_stats["max"]
+        assert weight_stats["q25"] <= weight_stats["median"] <= weight_stats["q75"]
+        assert weight_stats["outliers_count"] >= 0
+
+        # Test convergence detection
+        assert isinstance(raker.converged, bool)
+        if raker.converged:
+            assert isinstance(raker.convergence_step, int)
+            assert raker.convergence_step > 0
+
+        # Test oscillation detection
+        oscillating = raker.detect_oscillation()
+        assert isinstance(oscillating, bool)
+
+        # Test enhanced history
+        last_state = raker.history[-1]
+        assert "gradient_norm" in last_state
+        assert "loss_moving_avg" in last_state
+        assert "converged" in last_state
+        assert "oscillating" in last_state
+        assert "weight_stats" in last_state
+        assert isinstance(last_state["weight_stats"], dict)
+
+    def test_convergence_detection_disabled(self):
+        """Test that convergence detection can be disabled."""
+        targets = Targets()
+        raker = OnlineRakingSGD(targets, track_convergence=False)
+
+        obs = {"age": 1, "gender": 0, "education": 1, "region": 0}
+        raker.partial_fit(obs)
+
+        # Convergence tracking should be disabled
+        assert not raker.converged
+        assert raker.convergence_step is None
+
+        # But other diagnostics should still work
+        assert not np.isnan(raker.loss_moving_average)
+        assert len(raker.gradient_norm_history) == 1
+
+    def test_verbose_mode(self):
+        """Test verbose output (we just ensure it doesn't crash)."""
+        targets = Targets()
+        raker = OnlineRakingSGD(targets, verbose=True)
+        
+        # Should not crash with verbose=True
+        for i in range(105):  # Trigger verbose output at step 100
+            obs = {"age": i % 2, "gender": (i+1) % 2, "education": i % 2, "region": (i+1) % 2}
+            raker.partial_fit(obs)
+
+        assert raker._n_obs == 105
+
+    def test_oscillation_detection(self):
+        """Test oscillation detection with artificially oscillating loss."""
+        targets = Targets(age=0.5, gender=0.5, education=0.5, region=0.5)
+        
+        # Use high learning rate to potentially cause oscillation
+        raker = OnlineRakingSGD(targets, learning_rate=10.0, convergence_window=10)
+        
+        # Generate alternating pattern that might cause oscillation
+        for i in range(20):
+            if i % 2 == 0:
+                obs = {"age": 1, "gender": 1, "education": 1, "region": 1}
+            else:
+                obs = {"age": 0, "gender": 0, "education": 0, "region": 0}
+            raker.partial_fit(obs)
+        
+        # After enough observations, we should be able to detect if oscillating
+        oscillating = raker.detect_oscillation()
+        assert isinstance(oscillating, bool)
+
+    def test_convergence_tolerance(self):
+        """Test convergence detection with different tolerance levels."""
+        targets = Targets()
+        raker = OnlineRakingSGD(targets, learning_rate=1.0, convergence_window=5)
+        
+        # Add several similar observations
+        for _ in range(10):
+            obs = {"age": 1, "gender": 0, "education": 1, "region": 0}
+            raker.partial_fit(obs)
+        
+        # Test with strict tolerance
+        converged_strict = raker.check_convergence(tolerance=1e-10)
+        
+        # Test with loose tolerance
+        converged_loose = raker.check_convergence(tolerance=1e-2)
+        
+        # Loose tolerance should be more likely to detect convergence
+        assert isinstance(converged_strict, bool)
+        assert isinstance(converged_loose, bool)
+
 
 class TestRealisticScenarios:
     """Test with realistic survey scenarios."""
