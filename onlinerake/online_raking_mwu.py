@@ -100,22 +100,24 @@ class OnlineRakingMWU(OnlineRakingSGD):
         final_gradient_norm = 0.0
         for step in range(self.n_sgd_steps):
             grad = self._compute_gradient()
-            
+
             # Calculate gradient norm for convergence monitoring
             gradient_norm = float(np.linalg.norm(grad))
             if step == self.n_sgd_steps - 1:  # Store only final gradient norm
                 final_gradient_norm = gradient_norm
-            
+
             # exponentiate negative gradient times LR
             # clip exponent to avoid overflow
             update = np.exp(-self.learning_rate * grad)
             self._weights *= update
             np.clip(self._weights, self.min_weight, self.max_weight, out=self._weights)
-            
+
             # Verbose output for debugging
             if self.verbose and self._n_obs % 100 == 0 and step == 0:
-                print(f"MWU Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
-                      f"ess={self.effective_sample_size:.1f}")
+                print(
+                    f"MWU Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
+                    f"ess={self.effective_sample_size:.1f}"
+                )
 
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)

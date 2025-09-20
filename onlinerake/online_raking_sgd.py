@@ -121,7 +121,7 @@ class OnlineRakingSGD:
 
         # history: list of metric dicts recorded after each update
         self.history: list[Dict[str, Any]] = []
-        
+
         # convergence tracking
         self._loss_history: list[float] = []
         self._gradient_norms: list[float] = []
@@ -218,14 +218,28 @@ class OnlineRakingSGD:
     def weight_distribution_stats(self) -> Dict[str, float]:
         """Return comprehensive weight distribution statistics."""
         if self._n_obs == 0:
-            return {k: np.nan for k in ["min", "max", "mean", "std", "median", "q25", "q75", "outliers_count"]}
-        
+            return {
+                k: np.nan
+                for k in [
+                    "min",
+                    "max",
+                    "mean",
+                    "std",
+                    "median",
+                    "q25",
+                    "q75",
+                    "outliers_count",
+                ]
+            }
+
         w = self._weights
         q25, median, q75 = np.percentile(w, [25, 50, 75])
         iqr = q75 - q25
         outlier_threshold = 1.5 * iqr
-        outliers_count = np.sum((w < (q25 - outlier_threshold)) | (w > (q75 + outlier_threshold)))
-        
+        outliers_count = np.sum(
+            (w < (q25 - outlier_threshold)) | (w > (q75 + outlier_threshold))
+        )
+
         return {
             "min": float(w.min()),
             "max": float(w.max()),
@@ -239,12 +253,12 @@ class OnlineRakingSGD:
 
     def detect_oscillation(self, threshold: float = 0.1) -> bool:
         """Detect if loss is oscillating rather than converging.
-        
+
         Parameters
         ----------
         threshold : float
             Relative threshold for detecting oscillation vs trend.
-            
+
         Returns
         -------
         bool
@@ -252,13 +266,13 @@ class OnlineRakingSGD:
         """
         if len(self._loss_history) < self.convergence_window:
             return False
-            
-        recent_losses = self._loss_history[-self.convergence_window:]
-        
+
+        recent_losses = self._loss_history[-self.convergence_window :]
+
         # Calculate variance in recent losses
         loss_variance = np.var(recent_losses)
         mean_loss = np.mean(recent_losses)
-        
+
         # Check if variance is high relative to mean (indicating oscillation)
         if mean_loss > 0:
             cv = np.sqrt(loss_variance) / mean_loss
@@ -267,12 +281,12 @@ class OnlineRakingSGD:
 
     def check_convergence(self, tolerance: float = 1e-6) -> bool:
         """Check if algorithm has converged based on loss stability.
-        
+
         Parameters
         ----------
         tolerance : float
             Convergence tolerance for loss stability.
-            
+
         Returns
         -------
         bool
@@ -280,13 +294,13 @@ class OnlineRakingSGD:
         """
         if self._converged or len(self._loss_history) < self.convergence_window:
             return self._converged
-            
-        recent_losses = self._loss_history[-self.convergence_window:]
-        
+
+        recent_losses = self._loss_history[-self.convergence_window :]
+
         # Check if loss has stabilized (low variance in recent window)
         loss_std = np.std(recent_losses)
         mean_loss = np.mean(recent_losses)
-        
+
         # Convergence if relative standard deviation is below tolerance
         if mean_loss > 0:
             relative_std = loss_std / mean_loss
@@ -297,7 +311,7 @@ class OnlineRakingSGD:
                     if self.verbose:
                         print(f"Convergence detected at observation {self._n_obs}")
                 return True
-        
+
         return False
 
     # ------------------------------------------------------------------
@@ -345,11 +359,11 @@ class OnlineRakingSGD:
         """Record current metrics to history."""
         current_loss = self.loss
         self._loss_history.append(current_loss)
-        
+
         # Store gradient norm if provided
         if gradient_norm is not None:
             self._gradient_norms.append(gradient_norm)
-        
+
         state = {
             "n_obs": self._n_obs,
             "loss": current_loss,
@@ -360,10 +374,12 @@ class OnlineRakingSGD:
             "gradient_norm": gradient_norm if gradient_norm is not None else np.nan,
             "loss_moving_avg": self.loss_moving_average,
             "converged": self.converged,
-            "oscillating": self.detect_oscillation() if self.track_convergence else False,
+            "oscillating": (
+                self.detect_oscillation() if self.track_convergence else False
+            ),
         }
         self.history.append(state)
-        
+
         # Check convergence if tracking is enabled
         if self.track_convergence and not self._converged:
             self.check_convergence()
@@ -413,20 +429,22 @@ class OnlineRakingSGD:
         final_gradient_norm = 0.0
         for step in range(self.n_sgd_steps):
             grad = self._compute_gradient()
-            
+
             # Calculate gradient norm for convergence monitoring
             gradient_norm = float(np.linalg.norm(grad))
             if step == self.n_sgd_steps - 1:  # Store only final gradient norm
                 final_gradient_norm = gradient_norm
-            
+
             self._weights -= self.learning_rate * grad
             # clip weights
             np.clip(self._weights, self.min_weight, self.max_weight, out=self._weights)
-            
+
             # Verbose output for debugging
             if self.verbose and self._n_obs % 100 == 0 and step == 0:
-                print(f"Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
-                      f"ess={self.effective_sample_size:.1f}")
+                print(
+                    f"Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
+                    f"ess={self.effective_sample_size:.1f}"
+                )
 
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)
