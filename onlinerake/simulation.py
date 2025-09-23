@@ -22,10 +22,8 @@ Note that the simulations may be time consuming for large numbers of
 observations or seeds.  Adjust ``n_obs`` and ``n_seeds`` as needed.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Callable, Iterable, Optional, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -44,7 +42,7 @@ class DemographicObservation:
     education: int
     region: int
 
-    def as_dict(self) -> Dict[str, int]:
+    def as_dict(self) -> dict[str, int]:
         return {
             "age": self.age,
             "gender": self.gender,
@@ -58,15 +56,15 @@ class BiasSimulator:
 
     @staticmethod
     def linear_shift(
-        n_obs: int, start_probs: Dict[str, float], end_probs: Dict[str, float]
-    ) -> List[DemographicObservation]:
+        n_obs: int, start_probs: dict[str, float], end_probs: dict[str, float]
+    ) -> list[DemographicObservation]:
         """Generate a linear drift from ``start_probs`` to ``end_probs``.
 
         Each probability dict should map demographic names to the
         probability of a ``1`` in the binary indicator.  Probabilities
         interpolate linearly over time.
         """
-        data: List[DemographicObservation] = []
+        data: list[DemographicObservation] = []
         for i in range(n_obs):
             progress = i / (n_obs - 1) if n_obs > 1 else 0.0
             probs = {
@@ -87,11 +85,11 @@ class BiasSimulator:
     def sudden_shift(
         n_obs: int,
         shift_point: float,
-        before_probs: Dict[str, float],
-        after_probs: Dict[str, float],
-    ) -> List[DemographicObservation]:
+        before_probs: dict[str, float],
+        after_probs: dict[str, float],
+    ) -> list[DemographicObservation]:
         """Generate a sudden shift at ``shift_point`` fraction of the stream."""
-        data: List[DemographicObservation] = []
+        data: list[DemographicObservation] = []
         shift_index = int(shift_point * n_obs)
         for i in range(n_obs):
             probs = before_probs if i < shift_index else after_probs
@@ -106,15 +104,15 @@ class BiasSimulator:
 
     @staticmethod
     def oscillating_bias(
-        n_obs: int, base_probs: Dict[str, float], amplitude: float, period: int
-    ) -> List[DemographicObservation]:
+        n_obs: int, base_probs: dict[str, float], amplitude: float, period: int
+    ) -> list[DemographicObservation]:
         """Generate an oscillating bias around ``base_probs``.
 
         Probabilities oscillate sinusoidally with amplitude ``amplitude``
         and period ``period``.  Probabilities are clipped to [0.1, 0.9]
         to avoid degeneracy.
         """
-        data: List[DemographicObservation] = []
+        data: list[DemographicObservation] = []
         for i in range(n_obs):
             phase = 2 * np.pi * i / period
             osc = amplitude * np.sin(phase)
@@ -135,7 +133,7 @@ class BiasSimulator:
 def run_simulation_suite(
     n_seeds: int = 10,
     n_obs: int = 300,
-    targets: Optional[Targets] = None,
+    targets: Targets | None = None,
     learning_rate_sgd: float = 5.0,
     learning_rate_mwu: float = 1.0,
     n_steps: int = 3,
@@ -225,7 +223,7 @@ def run_simulation_suite(
         },
     }
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for scenario_name, config in scenarios.items():
         sim_fn = config["sim_fn"]
         params = config["params"]

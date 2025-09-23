@@ -37,10 +37,7 @@ notes.  See also :mod:`onlinerake.online_raking_mwu` for an alternative
 update strategy based on multiplicative weights.
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, MutableSequence, Optional
+from typing import Any, MutableSequence
 
 import numpy as np
 
@@ -120,13 +117,13 @@ class OnlineRakingSGD:
         self._n_obs: int = 0
 
         # history: list of metric dicts recorded after each update
-        self.history: list[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
 
         # convergence tracking
         self._loss_history: list[float] = []
         self._gradient_norms: list[float] = []
         self._converged: bool = False
-        self._convergence_step: Optional[int] = None
+        self._convergence_step: int | None = None
 
     # ------------------------------------------------------------------
     # Utility properties
@@ -137,7 +134,7 @@ class OnlineRakingSGD:
         return self._weights.copy()
 
     @property
-    def margins(self) -> Dict[str, float]:
+    def margins(self) -> dict[str, float]:
         """Return current weighted margins as a dictionary."""
         if self._n_obs == 0:
             return {k: np.nan for k in self.targets.as_dict()}
@@ -152,7 +149,7 @@ class OnlineRakingSGD:
         return margins
 
     @property
-    def raw_margins(self) -> Dict[str, float]:
+    def raw_margins(self) -> dict[str, float]:
         """Return unweighted (raw) margins as a dictionary."""
         if self._n_obs == 0:
             return {k: np.nan for k in self.targets.as_dict()}
@@ -197,7 +194,7 @@ class OnlineRakingSGD:
         return self._converged
 
     @property
-    def convergence_step(self) -> Optional[int]:
+    def convergence_step(self) -> int | None:
         """Return the step number where convergence was detected, if any."""
         return self._convergence_step
 
@@ -215,7 +212,7 @@ class OnlineRakingSGD:
         return self._gradient_norms.copy()
 
     @property
-    def weight_distribution_stats(self) -> Dict[str, float]:
+    def weight_distribution_stats(self) -> dict[str, float]:
         """Return comprehensive weight distribution statistics."""
         if self._n_obs == 0:
             return {
@@ -267,7 +264,7 @@ class OnlineRakingSGD:
         if len(self._loss_history) < self.convergence_window:
             return False
 
-        recent_losses = self._loss_history[-self.convergence_window :]
+        recent_losses = self._loss_history[-self.convergence_window:]
 
         # Calculate variance in recent losses
         loss_variance = np.var(recent_losses)
@@ -295,7 +292,7 @@ class OnlineRakingSGD:
         if self._converged or len(self._loss_history) < self.convergence_window:
             return self._converged
 
-        recent_losses = self._loss_history[-self.convergence_window :]
+        recent_losses = self._loss_history[-self.convergence_window:]
 
         # Check if loss has stabilized (low variance in recent window)
         loss_std = np.std(recent_losses)
@@ -355,7 +352,7 @@ class OnlineRakingSGD:
             gradients += loss_grad
         return gradients
 
-    def _record_state(self, gradient_norm: Optional[float] = None) -> None:
+    def _record_state(self, gradient_norm: float | None = None) -> None:
         """Record current metrics to history."""
         current_loss = self.loss
         self._loss_history.append(current_loss)

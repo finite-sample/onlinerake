@@ -4,7 +4,7 @@ Installation
 Requirements
 ------------
 
-- Python 3.8 or later
+- Python 3.10 or later
 - NumPy >= 1.21
 - Pandas >= 1.3
 

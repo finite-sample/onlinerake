@@ -6,6 +6,13 @@ We welcome contributions to ``onlinerake``! This guide will help you get started
 Development Setup
 -----------------
 
+**Requirements**
+
+- Python 3.10 or later
+- Git
+
+**Setup Steps**
+
 1. Fork the repository on GitHub
 2. Clone your fork locally:
 
@@ -19,7 +26,7 @@ Development Setup
 .. code-block:: bash
 
    pip install -e .
-   pip install pytest black flake8 sphinx
+   pip install pytest black flake8 sphinx sphinx-rtd-theme myst-parser
 
 Code Style
 ----------

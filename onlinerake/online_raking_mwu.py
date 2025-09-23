@@ -20,8 +20,6 @@ nearly the same API and internal metrics.  See the base class for
 attribute definitions and usage examples.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import numpy as np

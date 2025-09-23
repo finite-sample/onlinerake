@@ -7,7 +7,6 @@ available parameters.
 """
 
 import argparse
-from pprint import pprint
 
 from .simulation import run_simulation_suite, analyze_results
 

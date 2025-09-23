@@ -8,6 +8,7 @@ onlinerake: Streaming Survey Raking
    installation
    quickstart
    tutorials/index
+   diagnostics
    api_reference
    examples
    contributing

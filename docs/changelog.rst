@@ -9,16 +9,37 @@ and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0
 [Unreleased]
 ------------
 
+**Breaking Changes**
+- **Minimum Python version increased to 3.10** (from 3.8)
+- Modernized type hints using Python 3.10+ syntax (dict, list, | for union types)
+
 **Added**
-- Comprehensive test suite with 15+ test cases
+
+- **Enhanced Diagnostics & Monitoring**:
+
+  - Gradient norm tracking for convergence analysis
+  - Automatic convergence detection with configurable tolerance
+  - Oscillation detection for non-converging scenarios
+  - Enhanced weight distribution statistics (quartiles, outliers)
+  - Verbose mode for debugging with progress indicators
+  - Loss moving average calculation
+  - New ``diagnostics_demo.py`` example showcasing monitoring features
+- Comprehensive test suite with 21+ test cases
 - Realistic examples for common use cases
 - Complete documentation with Sphinx
 - CI/CD workflows for testing and publishing
 - Code formatting and linting checks
 
+**Changed**
+- Type hints modernized to use Python 3.10+ built-in types
+- Removed ``from __future__ import annotations`` (no longer needed)
+- CI/CD now tests Python 3.10, 3.11, 3.12, and 3.13 (dropped 3.8, 3.9)
+- Enhanced history tracking with comprehensive diagnostic metrics
+
 **Fixed**
 - Import errors for Optional and Any types in simulation module
 - Improved docstring formatting and clarity
+- Flake8 linting issues with whitespace in slice notation
 
 [0.1.1] - 2024-XX-XX
 --------------------
@@ -42,7 +63,7 @@ and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0
 **Dependencies**
 - numpy >= 1.21
 - pandas >= 1.3
-- Python >= 3.8
+- Python >= 3.10
 
 [0.1.0] - Initial Development
 -----------------------------
