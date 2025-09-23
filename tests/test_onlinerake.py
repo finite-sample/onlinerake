@@ -536,7 +536,7 @@ def test_sgd_vs_mwu_comparison():
 def test_mwu_exponent_clipping_no_overflow():
     """Test MWU with extreme learning rates doesn't produce overflow/NaN."""
     from onlinerake import OnlineRakingMWU, Targets
-    
+
     targets = Targets(age=0.5, gender=0.5, education=0.4, region=0.3)
     # Use extreme learning rate that would cause overflow without proper clipping
     mwu = OnlineRakingMWU(
@@ -544,22 +544,24 @@ def test_mwu_exponent_clipping_no_overflow():
         learning_rate=1e6,  # Extremely high learning rate
         min_weight=1e-3,
         max_weight=1e3,
-        n_steps=5
+        n_steps=5,
     )
-    
+
     # Stream deliberately extreme cases that would produce large gradients
     for _ in range(50):
         obs = {"age": 1, "gender": 0, "education": 1, "region": 0}
         mwu.partial_fit(obs)
-        
+
         # All weights must remain finite after each update
         assert np.all(np.isfinite(mwu.weights)), "Weights became infinite or NaN"
         assert np.all(mwu.weights > 0), "Weights became zero or negative"
-        
+
         # All margins must remain finite
         margins = mwu.margins
-        assert all(np.isfinite(v) for v in margins.values()), "Margins became infinite or NaN"
-        
+        assert all(
+            np.isfinite(v) for v in margins.values()
+        ), "Margins became infinite or NaN"
+
         # Loss must remain finite
         assert np.isfinite(mwu.loss), "Loss became infinite or NaN"
 
