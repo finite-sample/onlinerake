@@ -57,4 +57,4 @@ You can also run the simulation suite:
 
 .. code-block:: bash
 
-   python -m onlinerake.simulation
+   python examples/simulation.py

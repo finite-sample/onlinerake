@@ -29,8 +29,10 @@ Core modules in `onlinerake/`:
 - `targets.py` - Defines `Targets` dataclass for population margins (age, gender, education, region)
 - `online_raking_sgd.py` - SGD-based streaming raking algorithm 
 - `online_raking_mwu.py` - MWU-based algorithm (inherits from SGD)
+
+Example modules in `examples/`:
 - `simulation.py` - Simulation harness for benchmarking algorithms
-- `__main__.py` - Entry point for command-line simulation execution
+- `realistic_examples.py` - Real-world usage examples
 
 Both raking classes follow scikit-learn's `partial_fit` pattern: call `.partial_fit(obs)` for each observation and inspect `.margins`, `.loss`, and `.effective_sample_size` properties.
 
@@ -47,7 +49,7 @@ pip install pytest black flake8 sphinx sphinx-rtd-theme myst-parser
 pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term
 
 # Run simulation suite and examples
-python3 -m onlinerake.simulation
+python3 examples/simulation.py
 python3 examples/realistic_examples.py
 
 # Code quality checks (zero tolerance for critical issues)

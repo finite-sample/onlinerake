@@ -38,7 +38,7 @@ jobs:
     - name: Run tests
       run: |
         pytest tests/test_onlinerake.py -v
-        python -m onlinerake.simulation
+        python examples/simulation.py
         python examples/realistic_examples.py
 
   publish:

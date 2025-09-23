@@ -112,11 +112,11 @@ are better.
 You can reproduce these results or design new experiments by running
 
 ```bash
-python -m onlinerake.simulation
+python examples/simulation.py
 ```
 
 from the repository root.  See the source of
-`onlinerake/simulation.py` for details.
+`examples/simulation.py` for details.
 
 ## Examples
 

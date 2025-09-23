@@ -79,7 +79,7 @@ jobs:
 
     - name: Run simulation examples
       run: |
-        python -m onlinerake.simulation
+        python examples/simulation.py
         
     - name: Run realistic examples
       run: |

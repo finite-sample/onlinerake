@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Simulation harness for evaluating online raking algorithms.
 
 This module contains tools for generating synthetic streaming data with
@@ -14,7 +15,9 @@ using the provided :func:`analyze_results` convenience function.
 
 Example::
 
-    from onlinerake.simulation import run_simulation_suite, analyze_results
+    python examples/simulation.py
+    # or
+    from examples.simulation import run_simulation_suite, analyze_results
     df = run_simulation_suite(n_seeds=5, n_obs=300)
     analyze_results(df)
 
@@ -22,15 +25,16 @@ Note that the simulations may be time consuming for large numbers of
 observations or seeds.  Adjust ``n_obs`` and ``n_seeds`` as needed.
 """
 
+import argparse
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from .targets import Targets
-from .online_raking_sgd import OnlineRakingSGD
-from .online_raking_mwu import OnlineRakingMWU
+from onlinerake.targets import Targets
+from onlinerake.online_raking_sgd import OnlineRakingSGD
+from onlinerake.online_raking_mwu import OnlineRakingMWU
 
 
 @dataclass
@@ -342,3 +346,48 @@ def analyze_results(df: pd.DataFrame) -> None:
             print(
                 f"    Final loss: mean {mdf['final_loss'].mean():.4f}, std {mdf['final_loss'].std():.4f}"
             )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point for running simulations."""
+    parser = argparse.ArgumentParser(description="Run online raking simulations.")
+    parser.add_argument(
+        "--seeds", type=int, default=3, help="number of random seeds per scenario"
+    )
+    parser.add_argument(
+        "--n-obs",
+        type=int,
+        default=300,
+        dest="n_obs",
+        help="number of observations per seed",
+    )
+    parser.add_argument(
+        "--sgd-rate", type=float, default=5.0, help="learning rate for SGD raker"
+    )
+    parser.add_argument(
+        "--mwu-rate", type=float, default=1.0, help="learning rate for MWU raker"
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=3,
+        help="number of updates per observation for both algorithms",
+    )
+    args = parser.parse_args(argv)
+    print(
+        f"Running simulation with {args.seeds} seeds, {args.n_obs} observations per seed..."
+    )
+    df = run_simulation_suite(
+        n_seeds=args.seeds,
+        n_obs=args.n_obs,
+        learning_rate_sgd=args.sgd_rate,
+        learning_rate_mwu=args.mwu_rate,
+        n_steps=args.steps,
+    )
+    print(df.head())
+    analyze_results(df)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

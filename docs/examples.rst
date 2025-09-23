@@ -199,4 +199,4 @@ You can also run the built-in simulation suite:
 
 .. code-block:: bash
 
-   python -m onlinerake.simulation
+   python examples/simulation.py

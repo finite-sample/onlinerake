@@ -58,7 +58,7 @@ Run the test suite to make sure everything works:
    pytest test_onlinerake.py --cov=onlinerake --cov-report=term
    
    # Run simulation tests
-   python -m onlinerake.simulation
+   python examples/simulation.py
    python realistic_examples.py
 
 Types of Contributions
