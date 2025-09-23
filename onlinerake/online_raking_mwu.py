@@ -23,6 +23,7 @@ attribute definitions and usage examples.
 from typing import Any
 
 import numpy as np
+from numpy import finfo, log
 
 from .online_raking_sgd import OnlineRakingSGD
 
@@ -36,8 +37,9 @@ class OnlineRakingMWU(OnlineRakingSGD):
         Target population proportions for each demographic characteristic.
     learning_rate : float, optional
         Step size used in the exponent of the multiplicative update.  A
-        typical default is ``learning_rate=1.0``.  Larger values may
-        accelerate convergence but risk weight explosion.
+        typical default is ``learning_rate=1.0``.  The algorithm automatically
+        clips extreme exponents based on the weights dtype to prevent numerical
+        overflow/underflow, making it robust even with very large learning rates.
     min_weight : float, optional
         Lower bound applied to the weights after each update.  This
         prevents weights from collapsing to zero.  Must be positive.
@@ -47,6 +49,10 @@ class OnlineRakingMWU(OnlineRakingSGD):
     n_steps : int, optional
         Number of multiplicative updates applied each time a new
         observation arrives.
+    compute_weight_stats : bool or int, optional
+        Controls computation of weight distribution statistics for performance.
+        If True, compute on every call. If False, use cached values.
+        If integer k, compute every k observations. Default is False.
     """
 
     def __init__(
@@ -59,6 +65,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
         verbose: bool = False,
         track_convergence: bool = True,
         convergence_window: int = 20,
+        compute_weight_stats: bool | int = False,
     ) -> None:
         super().__init__(
             targets=targets,
@@ -69,6 +76,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
             verbose=verbose,
             track_convergence=track_convergence,
             convergence_window=convergence_window,
+            compute_weight_stats=compute_weight_stats,
         )
 
     def partial_fit(self, obs: Any) -> None:
@@ -89,26 +97,60 @@ class OnlineRakingMWU(OnlineRakingSGD):
         self._education.append(education)
         self._region.append(region)
         self._n_obs += 1
-        if self._weights.size == 0:
-            self._weights = np.array([1.0], dtype=float)
-        else:
-            self._weights = np.append(self._weights, 1.0)
 
-        # multiplicative update steps
+        # Use capacity doubling for weights array to avoid O(n²) reallocations
+        if self._n_obs > self._weights_capacity:
+            # Double capacity, minimum initial size of 8
+            new_capacity = max(8, self._weights_capacity * 2, self._n_obs)
+            new_weights = np.ones(new_capacity, dtype=float)
+            if self._weights_capacity > 0:
+                new_weights[: self._weights_capacity] = self._weights[
+                    : self._weights_capacity
+                ]
+            self._weights = new_weights
+            self._weights_capacity = new_capacity
+        else:
+            # Just initialize the new weight to 1.0
+            self._weights[self._n_obs - 1] = 1.0
+
+        # Pre-convert indicator lists to numpy arrays outside SGD loop for performance
+        arrs = {
+            "age": np.array(self._age, dtype=float),
+            "gender": np.array(self._gender, dtype=float),
+            "education": np.array(self._education, dtype=float),
+            "region": np.array(self._region, dtype=float),
+        }
+
+        # MWU steps (entropic mirror descent) with safe exponent clipping
+        # Compute log(max float) from dtype to avoid transient inf/0 before clipping
+        # Example: float64 -> ~709.78; float32 -> ~88.72
+        max_log = float(log(finfo(self._weights.dtype).max))
+        # Give ourselves a tiny safety margin to stay away from the asymptote
+        max_log *= 0.99
+
         final_gradient_norm = 0.0
         for step in range(self.n_sgd_steps):
-            grad = self._compute_gradient()
+            grad = self._compute_gradient(arrs)
 
             # Calculate gradient norm for convergence monitoring
             gradient_norm = float(np.linalg.norm(grad))
             if step == self.n_sgd_steps - 1:  # Store only final gradient norm
                 final_gradient_norm = gradient_norm
 
-            # exponentiate negative gradient times LR
-            # clip exponent to avoid overflow
-            update = np.exp(-self.learning_rate * grad)
-            self._weights *= update
-            np.clip(self._weights, self.min_weight, self.max_weight, out=self._weights)
+            # Clip the exponent argument BEFORE exp to keep everything finite
+            expo = -self.learning_rate * grad
+            np.clip(expo, -max_log, max_log, out=expo)
+            update = np.exp(expo, dtype=self._weights.dtype)
+
+            # Multiplicative update + in-range clipping
+            # Update only the active portion of the weights array
+            self._weights[: self._n_obs] *= update
+            np.clip(
+                self._weights[: self._n_obs],
+                self.min_weight,
+                self.max_weight,
+                out=self._weights[: self._n_obs],
+            )
 
             # Verbose output for debugging
             if self.verbose and self._n_obs % 100 == 0 and step == 0:

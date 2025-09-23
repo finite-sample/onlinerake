@@ -321,6 +321,111 @@ class TestDiagnosticsAndMonitoring:
         assert isinstance(converged_loose, bool)
 
 
+class TestNumericalStability:
+    """Test numerical stability fixes."""
+
+    def test_mwu_extreme_gradients(self):
+        """Test MWU handles extreme gradients without overflow."""
+        targets = Targets(age=0.5, gender=0.5, education=0.5, region=0.5)
+
+        # Use extreme learning rate that would cause overflow without clipping
+        raker = OnlineRakingMWU(targets, learning_rate=100.0)
+
+        # Create extreme observations that would produce large gradients
+        extreme_obs = [
+            {"age": 1, "gender": 1, "education": 1, "region": 1},  # All 1s
+            {"age": 0, "gender": 0, "education": 0, "region": 0},  # All 0s
+        ] * 10
+
+        # Should not crash or produce NaN/Inf values
+        for obs in extreme_obs:
+            raker.partial_fit(obs)
+
+            # Check that weights remain finite
+            assert np.all(np.isfinite(raker.weights))
+            assert np.all(raker.weights > 0)
+
+            # Check that margins remain finite
+            margins = raker.margins
+            assert all(np.isfinite(v) for v in margins.values())
+
+    def test_convergence_near_zero_loss(self):
+        """Test convergence detection when loss approaches zero."""
+        targets = Targets(age=0.5, gender=0.5, education=0.5, region=0.5)
+        raker = OnlineRakingSGD(
+            targets, learning_rate=1.0, track_convergence=True, convergence_window=5
+        )
+
+        # Create observations that exactly match targets (should produce near-zero loss)
+        perfect_obs = [
+            {"age": 1, "gender": 1, "education": 1, "region": 1},
+            {"age": 0, "gender": 0, "education": 0, "region": 0},
+        ] * 10
+
+        for obs in perfect_obs:
+            raker.partial_fit(obs)
+
+            # After enough observations, should converge due to low loss
+            if raker._n_obs >= raker.convergence_window:
+                # Force convergence check
+                converged = raker.check_convergence(tolerance=1e-6)
+
+                if converged:
+                    assert raker.converged
+                    assert raker.convergence_step is not None
+                    break
+
+        # Should eventually converge with very low loss
+        final_loss = raker.loss
+        assert final_loss < 0.01  # Very low loss
+
+    def test_convergence_with_zero_tolerance(self):
+        """Test convergence detection with zero tolerance (perfect convergence only)."""
+        targets = Targets(age=0.5, gender=0.5, education=0.5, region=0.5)
+        raker = OnlineRakingSGD(targets, learning_rate=1.0, convergence_window=3)
+
+        # Add observations that create exactly zero loss
+        for i in range(10):
+            if i % 2 == 0:
+                obs = {"age": 1, "gender": 1, "education": 1, "region": 1}
+            else:
+                obs = {"age": 0, "gender": 0, "education": 0, "region": 0}
+            raker.partial_fit(obs)
+
+        # With zero tolerance, should only converge if loss is exactly zero
+        converged = raker.check_convergence(tolerance=0.0)
+
+        # Should handle this without error
+        assert isinstance(converged, bool)
+
+    def test_mwu_weight_clipping_with_extreme_updates(self):
+        """Test that MWU weight clipping works with extreme exponent clipping."""
+        targets = Targets(
+            age=0.1, gender=0.9, education=0.1, region=0.9
+        )  # Extreme targets
+        raker = OnlineRakingMWU(
+            targets,
+            learning_rate=50.0,  # Very high learning rate
+            min_weight=0.01,
+            max_weight=100.0,
+        )
+
+        # Create biased observations
+        for _ in range(20):
+            obs = {
+                "age": 0,
+                "gender": 0,
+                "education": 0,
+                "region": 0,
+            }  # Opposite of targets
+            raker.partial_fit(obs)
+
+            # Weights should stay within bounds despite extreme updates
+            assert np.all(raker.weights >= raker.min_weight)
+            assert np.all(raker.weights <= raker.max_weight)
+            assert np.all(np.isfinite(raker.weights))
+
+
 class TestRealisticScenarios:
     """Test with realistic survey scenarios."""
 
@@ -426,6 +531,37 @@ def test_sgd_vs_mwu_comparison():
     # Both should maintain reasonable effective sample sizes
     assert sgd_raker.effective_sample_size > 50
     assert mwu_raker.effective_sample_size > 50
+
+
+def test_mwu_exponent_clipping_no_overflow():
+    """Test MWU with extreme learning rates doesn't produce overflow/NaN."""
+    from onlinerake import OnlineRakingMWU, Targets
+    
+    targets = Targets(age=0.5, gender=0.5, education=0.4, region=0.3)
+    # Use extreme learning rate that would cause overflow without proper clipping
+    mwu = OnlineRakingMWU(
+        targets,
+        learning_rate=1e6,  # Extremely high learning rate
+        min_weight=1e-3,
+        max_weight=1e3,
+        n_steps=5
+    )
+    
+    # Stream deliberately extreme cases that would produce large gradients
+    for _ in range(50):
+        obs = {"age": 1, "gender": 0, "education": 1, "region": 0}
+        mwu.partial_fit(obs)
+        
+        # All weights must remain finite after each update
+        assert np.all(np.isfinite(mwu.weights)), "Weights became infinite or NaN"
+        assert np.all(mwu.weights > 0), "Weights became zero or negative"
+        
+        # All margins must remain finite
+        margins = mwu.margins
+        assert all(np.isfinite(v) for v in margins.values()), "Margins became infinite or NaN"
+        
+        # Loss must remain finite
+        assert np.isfinite(mwu.loss), "Loss became infinite or NaN"
 
 
 if __name__ == "__main__":

@@ -64,6 +64,10 @@ class OnlineRakingSGD:
         Number of gradient steps applied each time a new observation
         arrives.  Values larger than 1 can help reduce oscillations but
         increase computational cost.
+    compute_weight_stats : bool or int, optional
+        Controls computation of weight distribution statistics for performance.
+        If True, compute on every call. If False, use cached values.
+        If integer k, compute every k observations. Default is False.
 
     Notes
     -----
@@ -86,6 +90,7 @@ class OnlineRakingSGD:
         verbose: bool = False,
         track_convergence: bool = True,
         convergence_window: int = 20,
+        compute_weight_stats: bool | int = False,
     ) -> None:
         if learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
@@ -97,6 +102,18 @@ class OnlineRakingSGD:
             raise ValueError("n_sgd_steps must be a positive integer")
         if convergence_window < 1:
             raise ValueError("convergence_window must be a positive integer")
+        if not isinstance(compute_weight_stats, (bool, int)):
+            raise ValueError(
+                "compute_weight_stats must be True, False, or a positive integer"
+            )
+        if (
+            isinstance(compute_weight_stats, int)
+            and not isinstance(compute_weight_stats, bool)
+            and compute_weight_stats < 1
+        ):
+            raise ValueError(
+                "compute_weight_stats must be True, False, or a positive integer"
+            )
 
         self.targets = targets
         self.learning_rate = learning_rate
@@ -106,8 +123,10 @@ class OnlineRakingSGD:
         self.verbose = verbose
         self.track_convergence = track_convergence
         self.convergence_window = convergence_window
+        self.compute_weight_stats = compute_weight_stats
 
-        # internal state
+        # internal state with capacity doubling for performance
+        self._weights_capacity: int = 0
         self._weights: np.ndarray = np.empty(0, dtype=float)
         # store demographic indicators for each observation in separate arrays
         self._age: MutableSequence[int] = []
@@ -115,6 +134,10 @@ class OnlineRakingSGD:
         self._education: MutableSequence[int] = []
         self._region: MutableSequence[int] = []
         self._n_obs: int = 0
+
+        # cached weight statistics for performance
+        self._cached_weight_stats: dict[str, float] | None = None
+        self._weight_stats_computed_at: int = 0
 
         # history: list of metric dicts recorded after each update
         self.history: list[dict[str, Any]] = []
@@ -131,14 +154,14 @@ class OnlineRakingSGD:
     @property
     def weights(self) -> np.ndarray:
         """Return a copy of the current weight vector."""
-        return self._weights.copy()
+        return self._weights[: self._n_obs].copy()
 
     @property
     def margins(self) -> dict[str, float]:
         """Return current weighted margins as a dictionary."""
         if self._n_obs == 0:
             return {k: np.nan for k in self.targets.as_dict()}
-        w = self._weights
+        w = self._weights[: self._n_obs]
         total = w.sum()
         margins = {}
         for name, arr in zip(
@@ -264,7 +287,7 @@ class OnlineRakingSGD:
         if len(self._loss_history) < self.convergence_window:
             return False
 
-        recent_losses = self._loss_history[-self.convergence_window:]
+        recent_losses = self._loss_history[-self.convergence_window :]
 
         # Calculate variance in recent losses
         loss_variance = np.var(recent_losses)
@@ -292,50 +315,73 @@ class OnlineRakingSGD:
         if self._converged or len(self._loss_history) < self.convergence_window:
             return self._converged
 
-        recent_losses = self._loss_history[-self.convergence_window:]
+        recent_losses = self._loss_history[-self.convergence_window :]
+        mean_loss = float(np.mean(recent_losses))
 
-        # Check if loss has stabilized (low variance in recent window)
-        loss_std = np.std(recent_losses)
-        mean_loss = np.mean(recent_losses)
+        # First check if loss is essentially zero
+        if mean_loss <= tolerance:
+            if not self._converged:
+                self._converged = True
+                self._convergence_step = self._n_obs
+                if self.verbose:
+                    print(
+                        f"Convergence detected at observation {self._n_obs} (loss ≈ 0)"
+                    )
+            return True
 
-        # Convergence if relative standard deviation is below tolerance
-        if mean_loss > 0:
-            relative_std = loss_std / mean_loss
-            if relative_std < tolerance:
-                if not self._converged:
-                    self._converged = True
-                    self._convergence_step = self._n_obs
-                    if self.verbose:
-                        print(f"Convergence detected at observation {self._n_obs}")
-                return True
+        # Then check relative stability for non-zero loss
+        loss_std = float(np.std(recent_losses))
+        relative_std = loss_std / mean_loss
+        if relative_std < tolerance:
+            if not self._converged:
+                self._converged = True
+                self._convergence_step = self._n_obs
+                if self.verbose:
+                    print(f"Convergence detected at observation {self._n_obs}")
+            return True
 
         return False
 
     # ------------------------------------------------------------------
     # Core logic
     # ------------------------------------------------------------------
-    def _compute_gradient(self) -> np.ndarray:
+    def _compute_gradient(
+        self, precomputed_arrays: dict[str, np.ndarray] | None = None
+    ) -> np.ndarray:
         """Compute gradient of the margin loss with respect to weights.
 
-        Returns a vector of shape (n_obs,) containing the gradient for
-        each weight.  The gradient expression is derived in the
-        accompanying paper/notes and corresponds to the derivative of
-        ``(margins - targets)`` squared with respect to each weight.
+        Parameters
+        ----------
+        precomputed_arrays : dict, optional
+            Pre-converted numpy arrays for demographic indicators.
+            If None, arrays will be computed from indicator lists.
+
+        Returns
+        -------
+        np.ndarray
+            Gradient vector of shape (n_obs,) containing the gradient for
+            each weight.  The gradient expression is derived in the
+            accompanying paper/notes and corresponds to the derivative of
+            ``(margins - targets)`` squared with respect to each weight.
         """
         n = self._n_obs
         if n == 0:
             return np.empty(0, dtype=float)
-        w = self._weights
+        w = self._weights[:n]
         total_w = w.sum()
 
-        # Precompute weighted sums for each characteristic
-        # Each arr is a list of ints (0/1) of length n
-        arrs = {
-            "age": np.array(self._age, dtype=float),
-            "gender": np.array(self._gender, dtype=float),
-            "education": np.array(self._education, dtype=float),
-            "region": np.array(self._region, dtype=float),
-        }
+        # Use precomputed arrays if provided, otherwise compute them
+        if precomputed_arrays is not None:
+            arrs = precomputed_arrays
+        else:
+            # Precompute weighted sums for each characteristic
+            # Each arr is a list of ints (0/1) of length n
+            arrs = {
+                "age": np.array(self._age, dtype=float),
+                "gender": np.array(self._gender, dtype=float),
+                "education": np.array(self._education, dtype=float),
+                "region": np.array(self._region, dtype=float),
+            }
         targets = self.targets.as_dict()
 
         gradients = np.zeros(n, dtype=float)

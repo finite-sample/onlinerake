@@ -3,6 +3,8 @@ Diagnostics and Monitoring
 
 The ``onlinerake`` package provides comprehensive diagnostics and monitoring capabilities to help you understand the behavior of your streaming raking algorithms. These features are particularly useful for debugging convergence issues, tuning parameters, and monitoring the quality of your weight calibration.
 
+The algorithms are designed with numerical stability in mind, automatically handling extreme cases that could cause overflow, underflow, or convergence detection failures.
+
 Enhanced Monitoring Features
 -----------------------------
 
@@ -211,5 +213,53 @@ Practical Examples
            
            if stats['outliers_count'] > raker._n_obs * 0.1:
                print("  Warning: High proportion of weight outliers")
+
+Numerical Stability and Robustness
+-----------------------------------
+
+The algorithms include several built-in safeguards for numerical stability:
+
+**MWU Exponent Clipping**
+
+The multiplicative weights update algorithm automatically clips exponential arguments to prevent overflow:
+
+.. code-block:: python
+
+   # Internally, MWU clips extreme exponents
+   expo = np.clip(-learning_rate * grad, -50.0, 50.0)
+   update = np.exp(expo)
+
+This prevents NaN/Inf values even with extreme learning rates or gradients.
+
+**Robust Convergence Detection**
+
+Convergence detection handles edge cases gracefully:
+
+.. code-block:: python
+
+   # Convergence when loss approaches zero
+   raker = OnlineRakingSGD(targets, track_convergence=True)
+   
+   # Algorithm automatically detects:
+   # 1. Perfect convergence (loss ≈ 0)
+   # 2. Relative stability (low variance)
+   
+   if raker.converged:
+       print(f"Converged at step {raker.convergence_step}")
+
+**Extreme Parameter Handling**
+
+Both algorithms are robust to extreme parameter settings:
+
+.. code-block:: python
+
+   # High learning rates with extreme targets
+   extreme_targets = Targets(age=0.1, gender=0.9, education=0.1, region=0.9)
+   raker = OnlineRakingMWU(extreme_targets, learning_rate=50.0)
+   
+   # Algorithm remains stable despite extreme settings
+   for obs in challenging_data:
+       raker.partial_fit(obs)
+       assert np.all(np.isfinite(raker.weights))  # Always finite
 
 For complete examples demonstrating all diagnostic features, see ``examples/diagnostics_demo.py`` in the package repository.
