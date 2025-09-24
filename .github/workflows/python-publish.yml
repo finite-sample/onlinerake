@@ -1,20 +1,18 @@
 # Build and publish Python package to PyPI
 name: Publish Python Package
-
 on:
   release:
     types: [ published ]
   workflow_dispatch:
     inputs:
-      pypi_environment:
-        description: 'PyPI environment to publish to'
+      target:
+        description: 'Publish target'
         required: true
         default: 'testpypi'
         type: choice
         options:
         - testpypi
         - pypi
-
 jobs:
   test:
     name: Run Tests Before Publishing
@@ -40,18 +38,13 @@ jobs:
         pytest tests/test_onlinerake.py -v
         python examples/simulation.py
         python examples/realistic_examples.py
-
   publish:
     name: Build and Publish Package
     runs-on: ubuntu-latest
     needs: test
-    environment: 
-      name: ${{ github.event_name == 'release' && 'pypi' || github.event.inputs.pypi_environment }}
-      url: ${{ github.event_name == 'release' && 'https://pypi.org/p/onlinerake' || (github.event.inputs.pypi_environment == 'pypi' && 'https://pypi.org/p/onlinerake' || 'https://test.pypi.org/p/onlinerake') }}
     permissions:
       id-token: write  # For trusted publishing
       contents: read
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -74,11 +67,11 @@ jobs:
         python -m twine check dist/*
         
     - name: Publish to Test PyPI
-      if: github.event_name == 'workflow_dispatch' && github.event.inputs.pypi_environment == 'testpypi'
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi'
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
         
     - name: Publish to PyPI
-      if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.pypi_environment == 'pypi')
+      if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'pypi')
       uses: pypa/gh-action-pypi-publish@release/v1
