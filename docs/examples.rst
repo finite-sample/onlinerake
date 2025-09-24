@@ -195,8 +195,21 @@ All examples are available in the repository as ``realistic_examples.py``:
 
    python realistic_examples.py
 
-You can also run the built-in simulation suite:
+You can also run the simulation and benchmarking suite:
 
 .. code-block:: bash
 
    python examples/simulation.py
+
+The simulation script provides various command-line options:
+
+.. code-block:: bash
+
+   python examples/simulation.py --help
+   python examples/simulation.py --seeds 5 --n-obs 500
+
+Available examples in the ``examples/`` folder:
+
+- ``realistic_examples.py`` - Real-world usage scenarios
+- ``simulation.py`` - Algorithm benchmarking and performance evaluation  
+- ``diagnostics_demo.py`` - Monitoring and convergence analysis tools

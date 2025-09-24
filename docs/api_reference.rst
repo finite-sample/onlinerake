@@ -40,27 +40,3 @@ OnlineRakingMWU
    :members:
    :undoc-members:
    :show-inheritance:
-
-Simulation Module
------------------
-
-The simulation module provides tools for benchmarking and testing the algorithms.
-
-.. currentmodule:: onlinerake.simulation
-
-.. autosummary::
-   :toctree: _autosummary
-   :nosignatures:
-
-   run_simulation_suite
-   analyze_results
-   DemographicObservation
-
-.. autofunction:: run_simulation_suite
-
-.. autofunction:: analyze_results
-
-.. autoclass:: DemographicObservation
-   :members:
-   :undoc-members:
-   :show-inheritance:
