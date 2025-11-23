@@ -37,7 +37,8 @@ notes.  See also :mod:`onlinerake.online_raking_mwu` for an alternative
 update strategy based on multiplicative weights.
 """
 
-from typing import Any, MutableSequence
+from collections.abc import MutableSequence
+from typing import Any
 
 import numpy as np
 
@@ -160,13 +161,14 @@ class OnlineRakingSGD:
     def margins(self) -> dict[str, float]:
         """Return current weighted margins as a dictionary."""
         if self._n_obs == 0:
-            return {k: np.nan for k in self.targets.as_dict()}
+            return dict.fromkeys(self.targets.as_dict(), np.nan)
         w = self._weights[: self._n_obs]
         total = w.sum()
         margins = {}
         for name, arr in zip(
             ["age", "gender", "education", "region"],
             [self._age, self._gender, self._education, self._region],
+            strict=False,
         ):
             margins[name] = float(np.dot(w, arr) / total)
         return margins
@@ -175,11 +177,12 @@ class OnlineRakingSGD:
     def raw_margins(self) -> dict[str, float]:
         """Return unweighted (raw) margins as a dictionary."""
         if self._n_obs == 0:
-            return {k: np.nan for k in self.targets.as_dict()}
+            return dict.fromkeys(self.targets.as_dict(), np.nan)
         raw = {}
         for name, arr in zip(
             ["age", "gender", "education", "region"],
             [self._age, self._gender, self._education, self._region],
+            strict=False,
         ):
             raw[name] = float(np.mean(arr))
         return raw
@@ -238,19 +241,10 @@ class OnlineRakingSGD:
     def weight_distribution_stats(self) -> dict[str, float]:
         """Return comprehensive weight distribution statistics."""
         if self._n_obs == 0:
-            return {
-                k: np.nan
-                for k in [
-                    "min",
-                    "max",
-                    "mean",
-                    "std",
-                    "median",
-                    "q25",
-                    "q75",
-                    "outliers_count",
-                ]
-            }
+            return dict.fromkeys(
+                ["min", "max", "mean", "std", "median", "q25", "q75", "outliers_count"],
+                np.nan,
+            )
 
         w = self._weights
         q25, median, q75 = np.percentile(w, [25, 50, 75])

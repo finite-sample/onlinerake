@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.21.1"]
+build-backend = "hatchling.build"
 
 [project]
 name = "onlinerake"
 version = "0.1.2"
 description = "Streaming survey raking via SGD and MWU"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Gaurav Sood", email = "gsood07@gmail.com" }
 ]
@@ -19,10 +19,35 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "black",
+docs = [
+    "sphinx>=7.0",
+    "furo>=2024.1.29",
+    "sphinx-autodoc-typehints>=1.25",
+    "sphinx-copybutton>=0.5",
+    "myst-parser>=2.0",
 ]
 
-[tool.setuptools]
+[tool.hatch.build.targets.wheel]
 packages = ["onlinerake"]
+
+[dependency-groups]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.7.0", "mypy>=1.0", "pre-commit>=3.0"]
+test = ["pytest>=7.0", "pytest-cov>=4.0"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true

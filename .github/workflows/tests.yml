@@ -1,4 +1,3 @@
-# Test Suite
 name: Tests
 
 on:
@@ -16,38 +15,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
       with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .
-        pip install pytest pytest-cov black flake8
+      run: uv sync --group dev --group test
 
-    - name: Run code quality checks
-      run: |
-        # Check code formatting with black
-        black --check onlinerake tests
-        
-        # Check for flake8 errors
-        flake8 onlinerake --count --select=E9,F63,F7,F82 --show-source --statistics
-        
-        # Additional flake8 warnings
-        flake8 onlinerake --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Run ruff linting
+      run: uv run ruff check .
+
+    - name: Run ruff formatting check  
+      run: uv run ruff format --check .
+
+    - name: Run type checking
+      run: uv run mypy onlinerake/
 
     - name: Run tests with coverage
-      run: |
-        pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term --cov-report=xml
+      run: uv run pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term --cov-report=xml
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.11'
@@ -66,21 +61,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
       with:
-        python-version: "3.11"
-        cache: 'pip'
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .
+      run: uv sync
 
     - name: Run simulation examples
-      run: |
-        python examples/simulation.py
+      run: uv run python examples/simulation.py
         
     - name: Run realistic examples
-      run: |
-        python examples/realistic_examples.py
+      run: uv run python examples/realistic_examples.py

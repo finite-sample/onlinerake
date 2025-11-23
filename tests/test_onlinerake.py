@@ -1,8 +1,9 @@
 """Comprehensive tests for the onlinerake package."""
 
-import pytest
 import numpy as np
-from onlinerake import OnlineRakingSGD, OnlineRakingMWU, Targets
+import pytest
+
+from onlinerake import OnlineRakingMWU, OnlineRakingSGD, Targets
 
 
 class TestTargets:
@@ -440,7 +441,7 @@ class TestRealisticScenarios:
         n_obs = 100
         biased_observations = []
 
-        for i in range(n_obs):
+        for _i in range(n_obs):
             # 70% chance of male (gender=0), 30% chance of female (gender=1)
             gender = 1 if np.random.random() < 0.3 else 0
             obs = {
@@ -474,7 +475,7 @@ class TestRealisticScenarios:
         np.random.seed(123)
         n_obs = 150
 
-        for i in range(n_obs):
+        for _i in range(n_obs):
             education = 1 if np.random.random() < 0.6 else 0
             obs = {
                 "age": np.random.choice([0, 1]),
@@ -501,7 +502,7 @@ def test_sgd_vs_mwu_comparison():
     np.random.seed(456)
     observations = []
 
-    for i in range(200):
+    for _i in range(200):
         # Age bias: 80% young people
         age = 1 if np.random.random() < 0.2 else 0
         obs = {
@@ -558,9 +559,9 @@ def test_mwu_exponent_clipping_no_overflow():
 
         # All margins must remain finite
         margins = mwu.margins
-        assert all(
-            np.isfinite(v) for v in margins.values()
-        ), "Margins became infinite or NaN"
+        assert all(np.isfinite(v) for v in margins.values()), (
+            "Margins became infinite or NaN"
+        )
 
         # Loss must remain finite
         assert np.isfinite(mwu.loss), "Loss became infinite or NaN"

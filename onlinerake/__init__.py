@@ -28,9 +28,9 @@ The :mod:`online_raking_sgd` and :mod:`online_raking_mwu` modules
 implement the two update strategies. See their docstrings for details.
 """
 
-from .targets import Targets  # noqa: F401
-from .online_raking_sgd import OnlineRakingSGD  # noqa: F401
 from .online_raking_mwu import OnlineRakingMWU  # noqa: F401
+from .online_raking_sgd import OnlineRakingSGD  # noqa: F401
+from .targets import Targets  # noqa: F401
 
 __all__ = [
     "Targets",

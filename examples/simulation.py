@@ -32,9 +32,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from onlinerake.targets import Targets
-from onlinerake.online_raking_sgd import OnlineRakingSGD
 from onlinerake.online_raking_mwu import OnlineRakingMWU
+from onlinerake.online_raking_sgd import OnlineRakingSGD
+from onlinerake.targets import Targets
 
 
 @dataclass
