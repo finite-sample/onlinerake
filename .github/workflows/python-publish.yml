@@ -22,22 +22,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7.1.4
       with:
-        python-version: "3.11"
+        version: "latest"
+        
+    - name: Set up Python
+      run: uv python install 3.11
         
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .
-        pip install pytest pytest-cov black flake8
+      run: uv sync --group dev --group test
         
     - name: Run tests
       run: |
-        pytest tests/test_onlinerake.py -v
-        python examples/simulation.py
-        python examples/realistic_examples.py
+        uv run pytest tests/test_onlinerake.py -v
+        uv run python examples/simulation.py
+        uv run python examples/realistic_examples.py
   publish:
     name: Build and Publish Package
     runs-on: ubuntu-latest
@@ -49,22 +49,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7.1.4
       with:
-        python-version: "3.11"
+        version: "latest"
         
-    - name: Install build dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
+    - name: Set up Python
+      run: uv python install 3.11
+        
+    - name: Install dependencies
+      run: uv sync
         
     - name: Build package
-      run: python -m build
+      run: uv build
       
     - name: Verify package
       run: |
-        python -m twine check dist/*
+        uv run twine check dist/*
         
     - name: Publish to Test PyPI
       if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi'
