@@ -457,7 +457,7 @@ class OnlineRakingSGD:
         self._education.append(education)
         self._region.append(region)
         self._n_obs += 1
-        # Initialise weight to 1.0 for new obs; enlarge array
+        # Initialize weight to 1.0 for new obs; enlarge array
         if self._weights.size == 0:
             self._weights = np.array([1.0], dtype=float)
         else:
