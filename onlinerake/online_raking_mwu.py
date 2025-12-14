@@ -20,6 +20,7 @@ nearly the same API and internal metrics.  See the base class for
 attribute definitions and usage examples.
 """
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -154,7 +155,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
 
             # Verbose output for debugging
             if self.verbose and self._n_obs % 100 == 0 and step == 0:
-                print(
+                logging.info(
                     f"MWU Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
                     f"ess={self.effective_sample_size:.1f}"
                 )

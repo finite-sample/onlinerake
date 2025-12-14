@@ -217,7 +217,10 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.savefig("fig_age_margin_error.png")
-    print("Figure saved as fig_age_margin_error.png")
+    import logging
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.info("Figure saved as fig_age_margin_error.png")
 
 
 if __name__ == "__main__":

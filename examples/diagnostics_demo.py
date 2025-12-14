@@ -1,15 +1,20 @@
 """Demonstration of enhanced diagnostics and monitoring features."""
 
+import logging
+
 import numpy as np
 
 from onlinerake import OnlineRakingSGD, Targets
 
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
 
 def demo_convergence_monitoring():
     """Demonstrate convergence monitoring and diagnostics."""
-    print("=" * 60)
-    print("DIAGNOSTICS DEMO: Convergence Monitoring")
-    print("=" * 60)
+    logging.info("=" * 60)
+    logging.info("DIAGNOSTICS DEMO: Convergence Monitoring")
+    logging.info("=" * 60)
 
     # Set up targets and raker with diagnostics enabled
     targets = Targets(age=0.5, gender=0.5, education=0.4, region=0.3)
@@ -21,9 +26,9 @@ def demo_convergence_monitoring():
         convergence_window=10,
     )
 
-    print(f"Target margins: {targets.as_dict()}")
-    print(f"Convergence window: {raker.convergence_window}")
-    print()
+    logging.info(f"Target margins: {targets.as_dict()}")
+    logging.info(f"Convergence window: {raker.convergence_window}")
+    logging.info("")
 
     # Generate converging data stream
     np.random.seed(42)
@@ -50,48 +55,48 @@ def demo_convergence_monitoring():
 
         # Print diagnostic info every 50 observations
         if (i + 1) % 50 == 0:
-            print(f"\nStep {i + 1}:")
-            print(
+            logging.info(f"\nStep {i + 1}:")
+            logging.info(
                 f"  Loss: {raker.loss:.6f} (moving avg: {raker.loss_moving_average:.6f})"
             )
-            print(f"  Gradient norm: {raker.gradient_norm_history[-1]:.6f}")
-            print(f"  ESS: {raker.effective_sample_size:.1f}")
-            print(f"  Converged: {raker.converged}")
-            print(f"  Oscillating: {raker.detect_oscillation()}")
+            logging.info(f"  Gradient norm: {raker.gradient_norm_history[-1]:.6f}")
+            logging.info(f"  ESS: {raker.effective_sample_size:.1f}")
+            logging.info(f"  Converged: {raker.converged}")
+            logging.info(f"  Oscillating: {raker.detect_oscillation()}")
 
             # Weight distribution stats
             weight_stats = raker.weight_distribution_stats
-            print(
+            logging.info(
                 f"  Weight range: [{weight_stats['min']:.3f}, {weight_stats['max']:.3f}]"
             )
-            print(f"  Weight outliers: {weight_stats['outliers_count']}")
+            logging.info(f"  Weight outliers: {weight_stats['outliers_count']}")
 
-    print("\nFINAL RESULTS:")
-    print(f"Converged: {raker.converged}")
+    logging.info("\nFINAL RESULTS:")
+    logging.info(f"Converged: {raker.converged}")
     if raker.converged:
-        print(f"Convergence detected at observation: {raker.convergence_step}")
+        logging.info(f"Convergence detected at observation: {raker.convergence_step}")
 
-    print(f"Final loss: {raker.loss:.6f}")
-    print(f"Final margins: {raker.margins}")
-    print(f"Target margins: {targets.as_dict()}")
+    logging.info(f"Final loss: {raker.loss:.6f}")
+    logging.info(f"Final margins: {raker.margins}")
+    logging.info(f"Target margins: {targets.as_dict()}")
 
     # Analyze convergence history
     losses = [state["loss"] for state in raker.history]
     gradient_norms = raker.gradient_norm_history
 
-    print("\nCONVERGENCE ANALYSIS:")
-    print(f"Loss range: [{min(losses):.6f}, {max(losses):.6f}]")
-    print(
+    logging.info("\nCONVERGENCE ANALYSIS:")
+    logging.info(f"Loss range: [{min(losses):.6f}, {max(losses):.6f}]")
+    logging.info(
         f"Gradient norm range: [{min(gradient_norms):.6f}, {max(gradient_norms):.6f}]"
     )
-    print(f"Final 10 losses: {losses[-10:]}")
+    logging.info(f"Final 10 losses: {losses[-10:]}")
 
 
 def demo_oscillation_detection():
     """Demonstrate oscillation detection."""
-    print("\n\n" + "=" * 60)
-    print("DIAGNOSTICS DEMO: Oscillation Detection")
-    print("=" * 60)
+    logging.info("\n\n" + "=" * 60)
+    logging.info("DIAGNOSTICS DEMO: Oscillation Detection")
+    logging.info("=" * 60)
 
     targets = Targets(age=0.5, gender=0.5, education=0.5, region=0.5)
 
@@ -103,8 +108,8 @@ def demo_oscillation_detection():
         convergence_window=15,
     )
 
-    print(f"Using high learning rate: {raker.learning_rate}")
-    print("Generating alternating extreme observations...")
+    logging.info(f"Using high learning rate: {raker.learning_rate}")
+    logging.info("Generating alternating extreme observations...")
 
     # Generate alternating extreme observations
     for i in range(50):
@@ -117,30 +122,34 @@ def demo_oscillation_detection():
 
         if (i + 1) % 10 == 0:
             oscillating = raker.detect_oscillation()
-            print(f"Step {i + 1}: Loss={raker.loss:.6f}, Oscillating={oscillating}")
+            logging.info(
+                f"Step {i + 1}: Loss={raker.loss:.6f}, Oscillating={oscillating}"
+            )
 
-    print(f"\nFinal oscillation status: {raker.detect_oscillation()}")
-    print(f"Converged: {raker.converged}")
+    logging.info(f"\nFinal oscillation status: {raker.detect_oscillation()}")
+    logging.info(f"Converged: {raker.converged}")
 
     # Show recent loss variance
     recent_losses = [
         state["loss"] for state in raker.history[-raker.convergence_window :]
     ]
-    print(f"Recent loss variance: {np.var(recent_losses):.6f}")
-    print(f"Recent loss mean: {np.mean(recent_losses):.6f}")
+    logging.info(f"Recent loss variance: {np.var(recent_losses):.6f}")
+    logging.info(f"Recent loss mean: {np.mean(recent_losses):.6f}")
 
 
 def demo_weight_distribution():
     """Demonstrate weight distribution analysis."""
-    print("\n\n" + "=" * 60)
-    print("DIAGNOSTICS DEMO: Weight Distribution Analysis")
-    print("=" * 60)
+    logging.info("\n\n" + "=" * 60)
+    logging.info("DIAGNOSTICS DEMO: Weight Distribution Analysis")
+    logging.info("=" * 60)
 
     targets = Targets(age=0.3, gender=0.7, education=0.2, region=0.8)  # Extreme targets
     raker = OnlineRakingSGD(targets, learning_rate=5.0)
 
-    print(f"Extreme target margins: {targets.as_dict()}")
-    print("Generating uniform random observations (will require extreme weights)...")
+    logging.info(f"Extreme target margins: {targets.as_dict()}")
+    logging.info(
+        "Generating uniform random observations (will require extreme weights)..."
+    )
 
     np.random.seed(123)
     for i in range(100):
@@ -155,18 +164,22 @@ def demo_weight_distribution():
 
         if (i + 1) % 25 == 0:
             weight_stats = raker.weight_distribution_stats
-            print(f"\nStep {i + 1} weight distribution:")
-            print(f"  Range: [{weight_stats['min']:.3f}, {weight_stats['max']:.3f}]")
-            print(f"  Mean±SD: {weight_stats['mean']:.3f}±{weight_stats['std']:.3f}")
-            print(
+            logging.info(f"\nStep {i + 1} weight distribution:")
+            logging.info(
+                f"  Range: [{weight_stats['min']:.3f}, {weight_stats['max']:.3f}]"
+            )
+            logging.info(
+                f"  Mean±SD: {weight_stats['mean']:.3f}±{weight_stats['std']:.3f}"
+            )
+            logging.info(
                 f"  Median (IQR): {weight_stats['median']:.3f} "
                 f"({weight_stats['q25']:.3f}-{weight_stats['q75']:.3f})"
             )
-            print(f"  Outliers: {weight_stats['outliers_count']}")
-            print(f"  ESS: {raker.effective_sample_size:.1f}/{i + 1}")
+            logging.info(f"  Outliers: {weight_stats['outliers_count']}")
+            logging.info(f"  ESS: {raker.effective_sample_size:.1f}/{i + 1}")
 
-    print(f"\nFinal margins achieved: {raker.margins}")
-    print(f"Target margins: {targets.as_dict()}")
+    logging.info(f"\nFinal margins achieved: {raker.margins}")
+    logging.info(f"Target margins: {targets.as_dict()}")
 
 
 if __name__ == "__main__":
@@ -174,6 +187,6 @@ if __name__ == "__main__":
     demo_oscillation_detection()
     demo_weight_distribution()
 
-    print("\n" + "=" * 60)
-    print("All diagnostics demonstrations completed!")
-    print("=" * 60)
+    logging.info("\n" + "=" * 60)
+    logging.info("All diagnostics demonstrations completed!")
+    logging.info("=" * 60)

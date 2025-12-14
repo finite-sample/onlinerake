@@ -26,6 +26,7 @@ observations or seeds.  Adjust ``n_obs`` and ``n_seeds`` as needed.
 """
 
 import argparse
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,6 +36,9 @@ import pandas as pd
 from onlinerake.online_raking_mwu import OnlineRakingMWU
 from onlinerake.online_raking_sgd import OnlineRakingSGD
 from onlinerake.targets import Targets
+
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 @dataclass
@@ -310,21 +314,21 @@ def analyze_results(df: pd.DataFrame) -> None:
     analysis, operate on the DataFrame directly.
     """
     if df.empty:
-        print("No results to analyse.")
+        logging.info("No results to analyse.")
         return
     demo_names = ["age", "gender", "education", "region"]
     for scenario in df["scenario"].unique():
-        print(f"\nScenario: {scenario}")
+        logging.info(f"\nScenario: {scenario}")
         scen_df = df[df["scenario"] == scenario]
         for method in scen_df["method"].unique():
             mdf = scen_df[scen_df["method"] == method]
-            print(f"  Method: {method}")
+            logging.info(f"  Method: {method}")
             # compute average errors
             for demo in demo_names:
                 mean_w = mdf[f"{demo}_temporal_error"].mean()
                 mean_b = mdf[f"{demo}_temporal_baseline_error"].mean()
                 impr = (mean_b - mean_w) / mean_b * 100 if mean_b != 0 else 0.0
-                print(
+                logging.info(
                     f"    {demo:<10}: baseline {mean_b:.4f} -> weighted {mean_w:.4f} ({impr:+.1f}% imp)"
                 )
             # aggregated improvement
@@ -339,11 +343,11 @@ def analyze_results(df: pd.DataFrame) -> None:
                 if mean_b_overall != 0
                 else 0.0
             )
-            print(f"    Overall improvement: {overall_impr:+.1f}%")
-            print(
+            logging.info(f"    Overall improvement: {overall_impr:+.1f}%")
+            logging.info(
                 f"    Final ESS: mean {mdf['final_ess'].mean():.1f}, std {mdf['final_ess'].std():.1f}"
             )
-            print(
+            logging.info(
                 f"    Final loss: mean {mdf['final_loss'].mean():.4f}, std {mdf['final_loss'].std():.4f}"
             )
 
@@ -374,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         help="number of updates per observation for both algorithms",
     )
     args = parser.parse_args(argv)
-    print(
+    logging.info(
         f"Running simulation with {args.seeds} seeds, {args.n_obs} observations per seed..."
     )
     df = run_simulation_suite(
@@ -384,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
         learning_rate_mwu=args.mwu_rate,
         n_steps=args.steps,
     )
-    print(df.head())
+    logging.info(df.head())
     analyze_results(df)
     return 0
 

@@ -37,6 +37,7 @@ notes.  See also :mod:`onlinerake.online_raking_mwu` for an alternative
 update strategy based on multiplicative weights.
 """
 
+import logging
 from collections.abc import MutableSequence
 from typing import Any
 
@@ -318,7 +319,7 @@ class OnlineRakingSGD:
                 self._converged = True
                 self._convergence_step = self._n_obs
                 if self.verbose:
-                    print(
+                    logging.info(
                         f"Convergence detected at observation {self._n_obs} (loss ≈ 0)"
                     )
             return True
@@ -331,7 +332,7 @@ class OnlineRakingSGD:
                 self._converged = True
                 self._convergence_step = self._n_obs
                 if self.verbose:
-                    print(f"Convergence detected at observation {self._n_obs}")
+                    logging.info(f"Convergence detected at observation {self._n_obs}")
             return True
 
         return False
@@ -478,7 +479,7 @@ class OnlineRakingSGD:
 
             # Verbose output for debugging
             if self.verbose and self._n_obs % 100 == 0 and step == 0:
-                print(
+                logging.info(
                     f"Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
                     f"ess={self.effective_sample_size:.1f}"
                 )
