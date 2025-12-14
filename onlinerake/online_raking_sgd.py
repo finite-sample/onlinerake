@@ -13,7 +13,7 @@ this implementation works in a streaming fashion: it does **not**
 revisit past observations except through their contribution to the
 cumulative weight totals.  Each update runs in *O(n)* time for
 n observations.  For large data streams you may wish to consider
-optimisations such as keeping only aggregate totals or using a single
+optimizations such as keeping only aggregate totals or using a single
 gradient step per observation.
 
 The class adheres to a simplified scikit‑learn ``partial_fit`` API: each

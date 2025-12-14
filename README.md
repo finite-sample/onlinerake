@@ -73,14 +73,14 @@ for full parameter descriptions.
 
 ## Simulation results
 
-To understand the behaviour of the two update rules we simulated
+To understand the behavior of the two update rules we simulated
 three typical non‑stationary bias patterns: a **linear drift** in
 demographic composition, a **sudden shift** halfway through the stream,
 and an **oscillation** around the target frame.  For each scenario we
 generated 300 observations per seed and averaged results over five
 random seeds.  SGD used a learning rate of 5.0 and MWU used a
 learning rate of 1.0 with three update steps per observation.  The
-table below summarises the mean improvement in absolute margin error
+table below summarizes the mean improvement in absolute margin error
 relative to the unweighted baseline (positive values indicate an
 improvement), the final effective sample size (ESS) and the mean final
 loss (squared‑error on margins).  Higher ESS and larger improvements

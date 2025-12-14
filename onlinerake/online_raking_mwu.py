@@ -83,7 +83,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
     def partial_fit(self, obs: Any) -> None:
         """Consume a single observation and update weights multiplicatively."""
 
-        # Add new observation and initialise weight as in base class
+        # Add new observation and initialize weight as in base class
         def _get_indicator(obj: Any, name: str) -> int:
             val = obj[name] if isinstance(obj, dict) else getattr(obj, name)
             return int(bool(val))

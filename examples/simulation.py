@@ -10,7 +10,7 @@ The high‑level entry point is :func:`run_simulation_suite`, which
 generates streams of observations under different bias dynamics,
 applies both the stochastic gradient descent (SGD) and multiplicative
 weights update (MWU) rakers, and aggregates a suite of diagnostic
-metrics.  The returned DataFrame can be further analysed or printed
+metrics.  The returned DataFrame can be further analyzed or printed
 using the provided :func:`analyze_results` convenience function.
 
 Example::
@@ -314,7 +314,7 @@ def analyze_results(df: pd.DataFrame) -> None:
     analysis, operate on the DataFrame directly.
     """
     if df.empty:
-        logging.info("No results to analyse.")
+        logging.info("No results to analyze.")
         return
     demo_names = ["age", "gender", "education", "region"]
     for scenario in df["scenario"].unique():
