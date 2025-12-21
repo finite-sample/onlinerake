@@ -17,9 +17,9 @@ class TestTargets:
     def test_custom_targets(self):
         """Test custom target values."""
         targets = Targets(feature_a=0.6, feature_b=0.4, feature_c=0.7)
-        assert targets['feature_a'] == 0.6
-        assert targets['feature_b'] == 0.4
-        assert targets['feature_c'] == 0.7
+        assert targets["feature_a"] == 0.6
+        assert targets["feature_b"] == 0.4
+        assert targets["feature_c"] == 0.7
 
     def test_as_dict(self):
         """Test conversion to dictionary."""
@@ -452,7 +452,9 @@ class TestRealisticScenarios:
 
         # Check that feature_b margin is closer to target after raking
         final_margins = raker.margins
-        raw_feature_b_prop = sum(obs["feature_b"] for obs in biased_observations) / n_obs
+        raw_feature_b_prop = (
+            sum(obs["feature_b"] for obs in biased_observations) / n_obs
+        )
 
         # Raw proportion should be around 0.3 (biased)
         assert 0.25 <= raw_feature_b_prop <= 0.35
@@ -514,7 +516,9 @@ def test_sgd_vs_mwu_comparison():
         mwu_raker.partial_fit(obs)
 
     # Both should improve feature_a margin compared to raw data
-    raw_feature_a_prop = sum(obs["feature_a"] for obs in observations) / len(observations)
+    raw_feature_a_prop = sum(obs["feature_a"] for obs in observations) / len(
+        observations
+    )
     sgd_feature_a_margin = sgd_raker.margins["feature_a"]
     mwu_feature_a_margin = mwu_raker.margins["feature_a"]
 

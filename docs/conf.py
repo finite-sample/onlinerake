@@ -62,7 +62,9 @@ myst_enable_extensions = [
 ]
 
 # nbsphinx settings
-nbsphinx_execute = "never"  # Don't execute notebooks during build (they should be pre-executed)
+nbsphinx_execute = (
+    "never"  # Don't execute notebooks during build (they should be pre-executed)
+)
 nbsphinx_allow_errors = False
 nbsphinx_kernel_name = "python3"
 
