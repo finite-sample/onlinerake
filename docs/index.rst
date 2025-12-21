@@ -7,6 +7,7 @@ onlinerake: Streaming Survey Raking
 
    installation
    quickstart
+   notebooks
    tutorials/index
    diagnostics
    api_reference
@@ -39,7 +40,7 @@ Quick Start
    from onlinerake import OnlineRakingSGD, Targets
 
    # Define target population margins
-   targets = Targets(age=0.5, gender=0.5, education=0.4, region=0.3)
+   targets = Targets(feature_a=0.5, feature_b=0.51, feature_c=0.4, feature_d=0.3)
    
    # Create raker
    raker = OnlineRakingSGD(targets, learning_rate=5.0)
@@ -48,6 +49,8 @@ Quick Start
    for obs in stream_of_observations:
        raker.partial_fit(obs)
        print(f"Current margins: {raker.margins}")
+
+💡 **New to OnlineRake?** Start with our `Interactive Notebooks <notebooks.html>`_ for hands-on tutorials with visualizations!
 
 Algorithms
 ----------

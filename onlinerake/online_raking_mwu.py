@@ -20,6 +20,8 @@ nearly the same API and internal metrics.  See the base class for
 attribute definitions and usage examples.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 
@@ -35,7 +37,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
     Parameters
     ----------
     targets : :class:`~onlinerake.targets.Targets`
-        Target population proportions for each demographic characteristic.
+        Target population proportions for each feature.
     learning_rate : float, optional
         Step size used in the exponent of the multiplicative update.  A
         typical default is ``learning_rate=1.0``.  The algorithm automatically
@@ -52,7 +54,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
         observation arrives.
     compute_weight_stats : bool or int, optional
         Controls computation of weight distribution statistics for performance.
-        If True, compute on every call. If False, use cached values.
+        If True, compute on every call. If False, never compute.
         If integer k, compute every k observations. Default is False.
     """
 
@@ -80,58 +82,49 @@ class OnlineRakingMWU(OnlineRakingSGD):
             compute_weight_stats=compute_weight_stats,
         )
 
-    def partial_fit(self, obs: Any) -> None:
-        """Consume a single observation and update weights multiplicatively."""
+    def partial_fit(self, obs: dict[str, Any] | Any) -> None:
+        """Consume a single observation and update weights multiplicatively.
 
-        # Add new observation and initialize weight as in base class
-        def _get_indicator(obj: Any, name: str) -> int:
-            val = obj[name] if isinstance(obj, dict) else getattr(obj, name)
-            return int(bool(val))
+        Parameters
+        ----------
+        obs : dict or object
+            An observation containing feature indicators. For dict input,
+            keys should match feature names in targets. For object input,
+            features are accessed as attributes. Values should be binary
+            (0/1 or False/True).
 
-        age = _get_indicator(obs, "age")
-        gender = _get_indicator(obs, "gender")
-        education = _get_indicator(obs, "education")
-        region = _get_indicator(obs, "region")
+        Returns
+        -------
+        None
+            The internal state is updated in place.
+        """
+        # Ensure we have capacity
+        self._expand_capacity()
 
-        self._age.append(age)
-        self._gender.append(gender)
-        self._education.append(education)
-        self._region.append(region)
+        # Extract feature values in the correct order
+        feature_values = np.zeros(self._n_features, dtype=np.int8)
+        for i, name in enumerate(self._feature_names):
+            if isinstance(obs, dict):
+                val = obs.get(name, 0)
+            else:
+                val = getattr(obs, name, 0)
+            feature_values[i] = int(bool(val))
+
+        # Store the observation
+        self._features[self._n_obs] = feature_values
+        self._weights[self._n_obs] = 1.0
         self._n_obs += 1
-
-        # Use capacity doubling for weights array to avoid O(n²) reallocations
-        if self._n_obs > self._weights_capacity:
-            # Double capacity, minimum initial size of 8
-            new_capacity = max(8, self._weights_capacity * 2, self._n_obs)
-            new_weights = np.ones(new_capacity, dtype=float)
-            if self._weights_capacity > 0:
-                new_weights[: self._weights_capacity] = self._weights[
-                    : self._weights_capacity
-                ]
-            self._weights = new_weights
-            self._weights_capacity = new_capacity
-        else:
-            # Just initialize the new weight to 1.0
-            self._weights[self._n_obs - 1] = 1.0
-
-        # Pre-convert indicator lists to numpy arrays outside SGD loop for performance
-        arrs = {
-            "age": np.array(self._age, dtype=float),
-            "gender": np.array(self._gender, dtype=float),
-            "education": np.array(self._education, dtype=float),
-            "region": np.array(self._region, dtype=float),
-        }
 
         # MWU steps (entropic mirror descent) with safe exponent clipping
         # Compute log(max float) from dtype to avoid transient inf/0 before clipping
         # Example: float64 -> ~709.78; float32 -> ~88.72
         max_log = float(log(finfo(self._weights.dtype).max))
-        # Give ourselves a tiny safety margin to stay away from the asymptote
-        max_log *= 0.99
+        # Give ourselves a safety margin to stay away from the asymptote
+        max_log *= 0.95  # Slightly more conservative than original 0.99
 
         final_gradient_norm = 0.0
         for step in range(self.n_sgd_steps):
-            grad = self._compute_gradient(arrs)
+            grad = self._compute_gradient()
 
             # Calculate gradient norm for convergence monitoring
             gradient_norm = float(np.linalg.norm(grad))

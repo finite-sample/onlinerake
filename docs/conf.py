@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(".."))
 project = "onlinerake"
 copyright = "2024, Gaurav Sood"
 author = "Gaurav Sood"
-release = "0.1.2"
+release = "1.0.0"
 
 # -- General configuration ---------------------------------------------------
 
@@ -20,6 +20,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "myst_parser",
+    "nbsphinx",
+    "sphinx.ext.mathjax",
 ]
 
 templates_path = ["_templates"]
@@ -58,3 +60,11 @@ myst_enable_extensions = [
     "deflist",
     "html_image",
 ]
+
+# nbsphinx settings
+nbsphinx_execute = "never"  # Don't execute notebooks during build (they should be pre-executed)
+nbsphinx_allow_errors = False
+nbsphinx_kernel_name = "python3"
+
+# Exclude patterns for notebooks
+exclude_patterns.extend(["**.ipynb_checkpoints"])

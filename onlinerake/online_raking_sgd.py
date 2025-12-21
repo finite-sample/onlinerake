@@ -1,47 +1,27 @@
 """Streaming raking based on stochastic gradient descent.
 
 This module implements a minimalistic yet flexible online raking algorithm
-for adjusting survey weights to match known population margins.  It
-maintains an internal weight vector that is updated whenever a new
-observation arrives.  The weights are adjusted so that the weighted
-proportions of each demographic characteristic track the target
-population proportions.  The algorithm uses stochastic gradient
-descent (SGD) on a squared‑error loss defined on the margins.
+for adjusting survey weights to match known population margins. It maintains
+an internal weight vector that is updated whenever a new observation arrives.
+The weights are adjusted so that the weighted proportions of each feature
+track the target population proportions using stochastic gradient descent (SGD)
+on a squared-error loss defined on the margins.
 
-Unlike classic batch raking or iterative proportional fitting (IPF),
-this implementation works in a streaming fashion: it does **not**
-revisit past observations except through their contribution to the
-cumulative weight totals.  Each update runs in *O(n)* time for
-n observations.  For large data streams you may wish to consider
-optimizations such as keeping only aggregate totals or using a single
-gradient step per observation.
+Unlike classic batch raking or iterative proportional fitting (IPF), this
+implementation works in a streaming fashion: it does not revisit past
+observations except through their contribution to the cumulative weight totals.
+Each update runs in O(k) time for k features (independent of n observations).
 
-The class adheres to a simplified scikit‑learn ``partial_fit`` API: each
-call to :meth:`partial_fit` consumes a single observation (encoded as a
-mapping or any object exposing the relevant demographic attributes) and
-updates the internal weights.  After each call, properties such as
-``margins``, ``loss`` and ``effective_sample_size`` provide insight
-into the current state of the estimator.
-
-Example::
-
-    from onlinerake import OnlineRakingSGD, Targets
-    targets = Targets(age=0.5, gender=0.5, education=0.4, region=0.3)
-    raker = OnlineRakingSGD(targets, learning_rate=5.0)
-    for obs in stream:
-        raker.partial_fit(obs)
-        print(raker.margins)  # inspect weighted margins after each step
-
-The algorithm is described in the accompanying README and research
-notes.  See also :mod:`onlinerake.online_raking_mwu` for an alternative
-update strategy based on multiplicative weights.
+The class follows the scikit-learn ``partial_fit`` API pattern.
 """
 
+from __future__ import annotations
+
 import logging
-from collections.abc import MutableSequence
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from .targets import Targets
 
@@ -49,37 +29,52 @@ from .targets import Targets
 class OnlineRakingSGD:
     """Online raking via stochastic gradient descent.
 
-    Parameters
-    ----------
-    targets : :class:`~onlinerake.targets.Targets`
-        Target population proportions for each demographic characteristic.
-    learning_rate : float, optional
-        Step size used in the gradient descent update. Larger values lead
-        to more aggressive updates but may cause oscillation or divergence.
-    min_weight : float, optional
-        Lower bound applied to the weights after each update to prevent
-        weights from collapsing to zero.  Must be positive.
-    max_weight : float, optional
-        Upper bound applied to the weights after each update to prevent
-        runaway weights.  Must exceed ``min_weight``.
-    n_sgd_steps : int, optional
-        Number of gradient steps applied each time a new observation
-        arrives.  Values larger than 1 can help reduce oscillations but
-        increase computational cost.
-    compute_weight_stats : bool or int, optional
-        Controls computation of weight distribution statistics for performance.
-        If True, compute on every call. If False, use cached values.
-        If integer k, compute every k observations. Default is False.
+    A streaming weight calibration algorithm that adjusts observation weights
+    to match target population margins using stochastic gradient descent (SGD).
+    The algorithm minimizes squared-error loss between weighted margins and
+    target proportions.
 
-    Notes
-    -----
-    * For binary demographic indicators the gradient of the margin with
-      respect to each weight can be derived analytically.  See the
-      documentation for details.
-    * The algorithm does not currently support categorical controls with
-      more than two levels.  Extending to multi‑level categories would
-      require storing one hot encodings and expanding the margin loss
-      accordingly.
+    Args:
+        targets: Target population proportions for each feature.
+        learning_rate: Step size for gradient descent updates. Larger values
+            lead to more aggressive updates but may cause oscillation. Default: 5.0.
+        min_weight: Lower bound for weights to prevent collapse. Must be positive.
+            Default: 0.001.
+        max_weight: Upper bound for weights to prevent explosion. Must exceed
+            min_weight. Default: 100.0.
+        n_sgd_steps: Number of gradient steps per observation. More steps can
+            reduce oscillations but increase computation. Default: 3.
+        verbose: If True, log progress information. Default: False.
+        track_convergence: If True, monitor convergence metrics. Default: True.
+        convergence_window: Number of observations for convergence detection.
+            Default: 20.
+        compute_weight_stats: Control weight statistics computation.
+            If True: compute every observation.
+            If False: never compute (best performance).
+            If int k: compute every k observations. Default: False.
+        max_history: Maximum historical states to retain. None for unlimited
+            (may cause memory issues). Default: 1000.
+
+    Attributes:
+        targets: The target proportions.
+        history: List of historical states after each update.
+
+    Examples:
+        >>> # General features
+        >>> targets = Targets(owns_car=0.4, is_subscriber=0.2)
+        >>> raker = OnlineRakingSGD(targets, learning_rate=5.0)
+        >>> raker.partial_fit({'owns_car': 1, 'is_subscriber': 0})
+        >>> print(f"Loss: {raker.loss:.4f}")
+
+        >>> # Process multiple observations
+        >>> for obs in stream:
+        ...     raker.partial_fit(obs)
+        ...     if raker.converged:
+        ...         break
+
+    Note:
+        The algorithm supports arbitrary binary features, not limited to
+        demographics. Feature names must match those defined in targets.
     """
 
     def __init__(
@@ -93,6 +88,7 @@ class OnlineRakingSGD:
         track_convergence: bool = True,
         convergence_window: int = 20,
         compute_weight_stats: bool | int = False,
+        max_history: int | None = 1000,
     ) -> None:
         if learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
@@ -126,16 +122,25 @@ class OnlineRakingSGD:
         self.track_convergence = track_convergence
         self.convergence_window = convergence_window
         self.compute_weight_stats = compute_weight_stats
+        self.max_history = max_history
+
+        # Extract feature information from targets
+        self._feature_names = targets.feature_names
+        self._n_features = targets.n_features
 
         # internal state with capacity doubling for performance
         self._weights_capacity: int = 0
-        self._weights: np.ndarray = np.empty(0, dtype=float)
-        # store demographic indicators for each observation in separate arrays
-        self._age: MutableSequence[int] = []
-        self._gender: MutableSequence[int] = []
-        self._education: MutableSequence[int] = []
-        self._region: MutableSequence[int] = []
+        self._weights: np.ndarray = np.empty(0, dtype=np.float64)
+
+        # Store features as a single 2D array for efficiency
+        self._features_capacity: int = 0
+        self._features: np.ndarray = np.empty((0, self._n_features), dtype=np.int8)
         self._n_obs: int = 0
+
+        # Precomputed target array for efficiency
+        self._target_array = np.array(
+            [targets[name] for name in self._feature_names], dtype=np.float64
+        )
 
         # cached weight statistics for performance
         self._cached_weight_stats: dict[str, float] | None = None
@@ -154,49 +159,104 @@ class OnlineRakingSGD:
     # Utility properties
     # ------------------------------------------------------------------
     @property
-    def weights(self) -> np.ndarray:
-        """Return a copy of the current weight vector."""
+    def weights(self) -> npt.NDArray[np.float64]:
+        """Get copy of current weight vector.
+
+        Returns:
+            Array of shape (n_obs,) containing current weights.
+
+        Examples:
+            >>> raker = OnlineRakingSGD(targets)
+            >>> raker.partial_fit({'feature_a': 1, 'feature_b': 0})
+            >>> weights = raker.weights
+            >>> print(weights.shape)
+            (1,)
+        """
         return self._weights[: self._n_obs].copy()
 
     @property
     def margins(self) -> dict[str, float]:
-        """Return current weighted margins as a dictionary."""
+        """Get current weighted margins.
+
+        Computes the weighted proportion of observations where each feature
+        equals 1, using the current weight vector.
+
+        Returns:
+            Dictionary mapping feature names to weighted proportions.
+            Returns NaN for all features if no observations processed.
+
+        Examples:
+            >>> targets = Targets(a=0.5, b=0.3)
+            >>> raker = OnlineRakingSGD(targets)
+            >>> raker.partial_fit({'a': 1, 'b': 0})
+            >>> margins = raker.margins
+            >>> print(margins['a'] > margins['b'])  # a=1, b=0 in observation
+            True
+        """
         if self._n_obs == 0:
-            return dict.fromkeys(self.targets.as_dict(), np.nan)
+            return dict.fromkeys(self._feature_names, np.nan)
+
         w = self._weights[: self._n_obs]
-        total = w.sum()
-        margins = {}
-        for name, arr in zip(
-            ["age", "gender", "education", "region"],
-            [self._age, self._gender, self._education, self._region],
-            strict=False,
-        ):
-            margins[name] = float(np.dot(w, arr) / total)
+        total_w = w.sum()
+
+        # Efficient vectorized computation
+        weighted_sums = w @ self._features[: self._n_obs]
+        margins = {
+            name: float(weighted_sums[i] / total_w)
+            for i, name in enumerate(self._feature_names)
+        }
         return margins
 
     @property
     def raw_margins(self) -> dict[str, float]:
-        """Return unweighted (raw) margins as a dictionary."""
+        """Get unweighted (raw) margins.
+
+        Computes the simple proportion of observations where each feature
+        equals 1, without using weights.
+
+        Returns:
+            Dictionary mapping feature names to unweighted proportions.
+            Returns NaN for all features if no observations processed.
+
+        Note:
+            Useful for comparing weighted vs unweighted margins to assess
+            the impact of the raking process.
+        """
         if self._n_obs == 0:
-            return dict.fromkeys(self.targets.as_dict(), np.nan)
-        raw = {}
-        for name, arr in zip(
-            ["age", "gender", "education", "region"],
-            [self._age, self._gender, self._education, self._region],
-            strict=False,
-        ):
-            raw[name] = float(np.mean(arr))
+            return dict.fromkeys(self._feature_names, np.nan)
+
+        # Mean of each feature column
+        feature_means = self._features[: self._n_obs].mean(axis=0)
+        raw = {
+            name: float(feature_means[i]) for i, name in enumerate(self._feature_names)
+        }
         return raw
 
     @property
     def loss(self) -> float:
-        """Return the current squared‑error loss on margins."""
+        """Get current squared-error loss.
+
+        Computes sum of squared differences between current weighted margins
+        and target proportions.
+
+        Returns:
+            Squared-error loss. Returns NaN if no observations processed.
+            Lower values indicate better calibration to targets.
+
+        Examples:
+            >>> # Perfect calibration would have loss near 0
+            >>> raker = OnlineRakingSGD(targets)
+            >>> # Process many observations...
+            >>> if raker.loss < 0.001:
+            ...     print("Well calibrated")
+        """
         if self._n_obs == 0:
             return np.nan
-        m = self.margins
+
+        margins = self.margins
         loss = 0.0
-        for name, target in self.targets.as_dict().items():
-            diff = m[name] - target
+        for name in self._feature_names:
+            diff = margins[name] - self.targets[name]
             loss += diff * diff
         return float(loss)
 
@@ -210,7 +270,7 @@ class OnlineRakingSGD:
         """
         if self._n_obs == 0:
             return 0.0
-        w = self._weights
+        w = self._weights[: self._n_obs]
         sum_w = w.sum()
         sum_w2 = (w * w).sum()
         return float((sum_w * sum_w) / sum_w2) if sum_w2 > 0 else 0.0
@@ -222,7 +282,12 @@ class OnlineRakingSGD:
 
     @property
     def convergence_step(self) -> int | None:
-        """Return the step number where convergence was detected, if any."""
+        """Get step number where convergence was detected.
+
+        Returns:
+            Observation number where convergence detected, or None if
+            not yet converged.
+        """
         return self._convergence_step
 
     @property
@@ -235,7 +300,12 @@ class OnlineRakingSGD:
 
     @property
     def gradient_norm_history(self) -> list[float]:
-        """Return history of gradient norms for convergence analysis."""
+        """Get history of gradient norms.
+
+        Returns:
+            List of gradient norms from each SGD step. Useful for
+            analyzing convergence behavior.
+        """
         return self._gradient_norms.copy()
 
     @property
@@ -247,7 +317,18 @@ class OnlineRakingSGD:
                 np.nan,
             )
 
-        w = self._weights
+        # Check if we should use cached values
+        if isinstance(self.compute_weight_stats, bool):
+            if not self.compute_weight_stats and self._cached_weight_stats is not None:
+                return self._cached_weight_stats
+        elif isinstance(self.compute_weight_stats, int):
+            if (
+                self._n_obs - self._weight_stats_computed_at
+            ) < self.compute_weight_stats:
+                if self._cached_weight_stats is not None:
+                    return self._cached_weight_stats
+
+        w = self._weights[: self._n_obs]
         q25, median, q75 = np.percentile(w, [25, 50, 75])
         iqr = q75 - q25
         outlier_threshold = 1.5 * iqr
@@ -255,7 +336,7 @@ class OnlineRakingSGD:
             (w < (q25 - outlier_threshold)) | (w > (q75 + outlier_threshold))
         )
 
-        return {
+        stats = {
             "min": float(w.min()),
             "max": float(w.max()),
             "mean": float(w.mean()),
@@ -266,18 +347,24 @@ class OnlineRakingSGD:
             "outliers_count": int(outliers_count),
         }
 
+        # Cache the results
+        self._cached_weight_stats = stats
+        self._weight_stats_computed_at = self._n_obs
+
+        return stats
+
     def detect_oscillation(self, threshold: float = 0.1) -> bool:
         """Detect if loss is oscillating rather than converging.
 
-        Parameters
-        ----------
-        threshold : float
-            Relative threshold for detecting oscillation vs trend.
+        Args:
+            threshold: Relative threshold for detecting oscillation vs trend.
+                Higher values are less sensitive to oscillation. Default: 0.1.
 
-        Returns
-        -------
-        bool
-            True if oscillation is detected in recent loss history.
+        Returns:
+            True if oscillation detected in recent loss history, False otherwise.
+
+        Note:
+            Oscillation suggests the learning rate may be too high.
         """
         if len(self._loss_history) < self.convergence_window:
             return False
@@ -297,15 +384,16 @@ class OnlineRakingSGD:
     def check_convergence(self, tolerance: float = 1e-6) -> bool:
         """Check if algorithm has converged based on loss stability.
 
-        Parameters
-        ----------
-        tolerance : float
-            Convergence tolerance for loss stability.
+        Args:
+            tolerance: Convergence tolerance. Smaller values require more
+                stable loss. Default: 1e-6.
 
-        Returns
-        -------
-        bool
-            True if convergence is detected.
+        Returns:
+            True if convergence detected, False otherwise.
+
+        Note:
+            Convergence is detected when loss is near zero or when relative
+            standard deviation of recent losses is below tolerance.
         """
         if self._converged or len(self._loss_history) < self.convergence_window:
             return self._converged
@@ -326,75 +414,112 @@ class OnlineRakingSGD:
 
         # Then check relative stability for non-zero loss
         loss_std = float(np.std(recent_losses))
-        relative_std = loss_std / mean_loss
-        if relative_std < tolerance:
-            if not self._converged:
-                self._converged = True
-                self._convergence_step = self._n_obs
-                if self.verbose:
-                    logging.info(f"Convergence detected at observation {self._n_obs}")
-            return True
+        # Avoid division by very small mean_loss
+        if mean_loss > tolerance:
+            relative_std = loss_std / mean_loss
+            if relative_std < tolerance:
+                if not self._converged:
+                    self._converged = True
+                    self._convergence_step = self._n_obs
+                    if self.verbose:
+                        logging.info(
+                            f"Convergence detected at observation {self._n_obs}"
+                        )
+                return True
 
         return False
 
     # ------------------------------------------------------------------
     # Core logic
     # ------------------------------------------------------------------
-    def _compute_gradient(
-        self, precomputed_arrays: dict[str, np.ndarray] | None = None
-    ) -> np.ndarray:
+    def _compute_gradient(self) -> npt.NDArray[np.float64]:
         """Compute gradient of the margin loss with respect to weights.
 
-        Parameters
-        ----------
-        precomputed_arrays : dict, optional
-            Pre-converted numpy arrays for demographic indicators.
-            If None, arrays will be computed from indicator lists.
+        Returns:
+            Gradient vector of shape (n_obs,) where each element is the
+            partial derivative of the loss with respect to that weight.
 
-        Returns
-        -------
-        np.ndarray
-            Gradient vector of shape (n_obs,) containing the gradient for
-            each weight.  The gradient expression is derived in the
-            accompanying paper/notes and corresponds to the derivative of
-            ``(margins - targets)`` squared with respect to each weight.
+        Note:
+            Internal method. The gradient formula is derived analytically
+            from the squared-error loss on weighted margins.
         """
         n = self._n_obs
         if n == 0:
-            return np.empty(0, dtype=float)
+            return np.empty(0, dtype=np.float64)
+
         w = self._weights[:n]
         total_w = w.sum()
 
-        # Use precomputed arrays if provided, otherwise compute them
-        if precomputed_arrays is not None:
-            arrs = precomputed_arrays
-        else:
-            # Precompute weighted sums for each characteristic
-            # Each arr is a list of ints (0/1) of length n
-            arrs = {
-                "age": np.array(self._age, dtype=float),
-                "gender": np.array(self._gender, dtype=float),
-                "education": np.array(self._education, dtype=float),
-                "region": np.array(self._region, dtype=float),
-            }
-        targets = self.targets.as_dict()
+        # Get active features
+        features = self._features[:n]  # Shape: (n_obs, n_features)
 
-        gradients = np.zeros(n, dtype=float)
-        for name, arr in arrs.items():
-            # Weighted sum of this characteristic
-            weighted_sum = np.dot(w, arr)
-            current_margin = weighted_sum / total_w
-            target = targets[name]
-            # derivative of margin w.r.t each weight
-            # margin = sum_i w_i x_i / sum_i w_i
-            # d margin / d w_k = (x_k * total_w - weighted_sum) / total_w^2
-            margin_grad = (arr * total_w - weighted_sum) / (total_w * total_w)
+        # Compute current margins efficiently
+        weighted_sums = w @ features  # Shape: (n_features,)
+        current_margins = weighted_sums / total_w
+
+        # Compute gradient for each feature
+        gradients = np.zeros(n, dtype=np.float64)
+
+        for i, feature_name in enumerate(self._feature_names):
+            target = self.targets[feature_name]
+            current_margin = current_margins[i]
+
+            # Gradient of margin w.r.t. weights
+            # margin = sum_j(w_j * x_j) / sum_j(w_j)
+            # d(margin)/d(w_k) = (x_k * total_w - weighted_sum) / total_w^2
+            feature_col = features[:, i]
+            margin_grad = (feature_col * total_w - weighted_sums[i]) / (
+                total_w * total_w
+            )
+
+            # Gradient of squared error loss
             loss_grad = 2.0 * (current_margin - target) * margin_grad
             gradients += loss_grad
+
         return gradients
 
+    def _expand_capacity(self) -> None:
+        """Expand internal arrays when capacity is reached.
+
+        Uses capacity doubling strategy to amortize allocation cost to O(1)
+        per observation. This avoids O(n²) complexity from repeated resizing.
+
+        Note:
+            Internal method. Called automatically by partial_fit.
+        """
+        # Expand weights array
+        if self._n_obs >= self._weights_capacity:
+            new_capacity = max(8, self._weights_capacity * 2, self._n_obs + 1)
+            new_weights = np.ones(new_capacity, dtype=np.float64)
+            if self._weights_capacity > 0:
+                new_weights[: self._weights_capacity] = self._weights[
+                    : self._weights_capacity
+                ]
+            self._weights = new_weights
+            self._weights_capacity = new_capacity
+
+        # Expand features array
+        if self._n_obs >= self._features_capacity:
+            new_capacity = max(8, self._features_capacity * 2, self._n_obs + 1)
+            new_features = np.zeros((new_capacity, self._n_features), dtype=np.int8)
+            if self._features_capacity > 0:
+                new_features[: self._features_capacity] = self._features[
+                    : self._features_capacity
+                ]
+            self._features = new_features
+            self._features_capacity = new_capacity
+
     def _record_state(self, gradient_norm: float | None = None) -> None:
-        """Record current metrics to history."""
+        """Record current metrics to history.
+
+        Args:
+            gradient_norm: Norm of the gradient at current step.
+                If provided, will be included in historical record.
+
+        Note:
+            Internal method. Automatically manages history size based on
+            max_history parameter.
+        """
         current_loss = self.loss
         self._loss_history.append(current_loss)
 
@@ -418,50 +543,62 @@ class OnlineRakingSGD:
         }
         self.history.append(state)
 
+        # Limit history size if specified
+        if self.max_history is not None and len(self.history) > self.max_history:
+            self.history = self.history[-self.max_history :]
+
         # Check convergence if tracking is enabled
         if self.track_convergence and not self._converged:
             self.check_convergence()
 
-    def partial_fit(self, obs: Any) -> None:
-        """Consume a single observation and update weights.
+    def partial_fit(self, obs: dict[str, Any] | Any) -> None:
+        """Process single observation and update weights.
 
-        Parameters
-        ----------
-        obs : mapping or object
-            An observation containing demographic indicators.  The
-            attributes/keys ``age``, ``gender``, ``education`` and
-            ``region`` must be accessible on the object.  The values
-            should be 0 or 1.  Anything truthy is interpreted as 1.
+        Args:
+            obs: Observation containing feature indicators. Can be:
+                - dict: Keys should match feature names in targets
+                - object: Features accessed as attributes
+                Values should be binary (0/1 or False/True).
+                Missing features default to 0.
 
-        Returns
-        -------
-        None
-            The internal state is updated in place.  The caller can
-            inspect the properties ``weights``, ``margins`` and ``loss``
-            after the call for diagnostics.
+        Returns:
+            None. Updates internal state in place.
+
+        Examples:
+            >>> targets = Targets(owns_car=0.4, is_subscriber=0.2)
+            >>> raker = OnlineRakingSGD(targets)
+            >>>
+            >>> # Dict input
+            >>> raker.partial_fit({'owns_car': 1, 'is_subscriber': 0})
+            >>>
+            >>> # Object input (e.g., dataclass or namedtuple)
+            >>> from dataclasses import dataclass
+            >>> @dataclass
+            ... class Obs:
+            ...     owns_car: int
+            ...     is_subscriber: int
+            >>> raker.partial_fit(Obs(owns_car=1, is_subscriber=0))
+
+        Note:
+            After calling, inspect `weights`, `margins`, and `loss` properties
+            for current state.
         """
+        # Ensure we have capacity
+        self._expand_capacity()
 
-        # Convert to numeric binary indicators
-        def _get_indicator(obj: Any, name: str) -> int:
-            val = obj[name] if isinstance(obj, dict) else getattr(obj, name)
-            return int(bool(val))
+        # Extract feature values in the correct order
+        feature_values = np.zeros(self._n_features, dtype=np.int8)
+        for i, name in enumerate(self._feature_names):
+            if isinstance(obs, dict):
+                val = obs.get(name, 0)
+            else:
+                val = getattr(obs, name, 0)
+            feature_values[i] = int(bool(val))
 
-        age = _get_indicator(obs, "age")
-        gender = _get_indicator(obs, "gender")
-        education = _get_indicator(obs, "education")
-        region = _get_indicator(obs, "region")
-
-        # Append new observation and weight
-        self._age.append(age)
-        self._gender.append(gender)
-        self._education.append(education)
-        self._region.append(region)
+        # Store the observation
+        self._features[self._n_obs] = feature_values
+        self._weights[self._n_obs] = 1.0
         self._n_obs += 1
-        # Initialize weight to 1.0 for new obs; enlarge array
-        if self._weights.size == 0:
-            self._weights = np.array([1.0], dtype=float)
-        else:
-            self._weights = np.append(self._weights, 1.0)
 
         # perform n_sgd_steps updates
         final_gradient_norm = 0.0
@@ -473,9 +610,15 @@ class OnlineRakingSGD:
             if step == self.n_sgd_steps - 1:  # Store only final gradient norm
                 final_gradient_norm = gradient_norm
 
-            self._weights -= self.learning_rate * grad
+            # Update only active weights
+            self._weights[: self._n_obs] -= self.learning_rate * grad
             # clip weights
-            np.clip(self._weights, self.min_weight, self.max_weight, out=self._weights)
+            np.clip(
+                self._weights[: self._n_obs],
+                self.min_weight,
+                self.max_weight,
+                out=self._weights[: self._n_obs],
+            )
 
             # Verbose output for debugging
             if self.verbose and self._n_obs % 100 == 0 and step == 0:
@@ -487,5 +630,30 @@ class OnlineRakingSGD:
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)
 
-    # alias for consistency with MWU version
+    def partial_fit_batch(self, observations: list[dict[str, Any] | Any]) -> None:
+        """Process multiple observations in batch.
+
+        Args:
+            observations: List of observations, each in same format as
+                for partial_fit method.
+
+        Returns:
+            None. Updates internal state for all observations.
+
+        Examples:
+            >>> observations = [
+            ...     {'feature_a': 1, 'feature_b': 0},
+            ...     {'feature_a': 0, 'feature_b': 1},
+            ...     {'feature_a': 1, 'feature_b': 1},
+            ... ]
+            >>> raker.partial_fit_batch(observations)
+
+        Note:
+            Currently processes observations sequentially. Future versions
+            may implement true batch processing for better performance.
+        """
+        for obs in observations:
+            self.partial_fit(obs)
+
+    # Backward compatibility aliases
     fit_one = partial_fit
