@@ -8,12 +8,8 @@ onlinerake: Streaming Survey Raking
    installation
    quickstart
    notebooks
-   tutorials/index
    diagnostics
    api_reference
-   examples
-   contributing
-   changelog
 
 Modern online surveys and passive data collection streams generate
 responses one record at a time. Classic weighting methods such as

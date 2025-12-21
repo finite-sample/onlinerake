@@ -4,7 +4,7 @@ Installation
 Requirements
 ------------
 
-- Python 3.10 or later
+- Python 3.11 or later
 - NumPy >= 1.21
 - Pandas >= 1.3
 
@@ -22,9 +22,9 @@ Clone the repository and install in development mode:
 
 .. code-block:: bash
 
-   git clone https://github.com/your-username/onlinerake.git
+   git clone https://github.com/finite-sample/onlinerake.git
    cd onlinerake
-   pip install -e .
+   uv sync
 
 Development Installation
 ------------------------
@@ -33,8 +33,7 @@ For development work, install with additional dependencies:
 
 .. code-block:: bash
 
-   pip install -e .
-   pip install pytest black flake8
+   uv sync --group dev --group test
 
 Verify Installation
 -------------------
