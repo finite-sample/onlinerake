@@ -25,8 +25,8 @@ that the algorithms work.
 * Visual validation with comprehensive plots
 * Clear before/after comparisons showing success
 
-⚡ Performance Comparison 
-------------------------
+⚡ Performance Comparison
+--------------------------
 
 Deep dive into algorithm performance across different bias scenarios.
 
@@ -44,7 +44,7 @@ Deep dive into algorithm performance across different bias scenarios.
 * Parameter tuning insights
 
 🔬 Advanced Diagnostics
------------------------
+-------------------------
 
 Master the monitoring and diagnostic capabilities for production deployments.
 
