@@ -57,9 +57,8 @@ Run the test suite to make sure everything works:
    # Run with coverage
    pytest test_onlinerake.py --cov=onlinerake --cov-report=term
    
-   # Run simulation tests
-   python examples/simulation.py
-   python realistic_examples.py
+   # Test interactive tutorials
+   jupyter notebook docs/notebooks/
 
 Types of Contributions
 ----------------------

@@ -109,26 +109,39 @@ are better.
   multiplicative adjustments are desired (e.g., when starting from
   unequal base weights).
 
-You can reproduce these results or design new experiments by running
+You can reproduce these results and explore interactive examples by running the Jupyter notebooks:
 
 ```bash
-python examples/simulation.py
+# Install with documentation dependencies
+pip install onlinerake[docs]
+
+# Launch interactive notebooks
+jupyter notebook docs/notebooks/
 ```
 
-from the repository root.  See the source of
-`examples/simulation.py` for details.
+See the `02_performance_comparison.ipynb` notebook for detailed algorithm analysis and benchmarking.
 
-## Examples
+## Interactive Examples
 
-Realistic usage examples are provided in `examples/realistic_examples.py`, including:
-- Correcting gender bias in online surveys
+Comprehensive examples with visualizations are provided as Jupyter notebooks in `docs/notebooks/`:
+- `01_getting_started.ipynb` - Introduction with visual demonstrations  
+- `02_performance_comparison.ipynb` - Algorithm benchmarking and analysis
+- `03_advanced_diagnostics.ipynb` - Convergence monitoring and diagnostics
+
+The notebooks include:
+- Correcting feature bias in online surveys
 - Real-time polling with demographic shifts  
 - Performance comparison between SGD and MWU algorithms
+- Visual validation that the algorithms work correctly
 
-Run the examples:
+Run the interactive examples:
 
 ```bash
-python examples/realistic_examples.py
+# Install with documentation dependencies
+pip install onlinerake[docs]
+
+# Launch Jupyter notebooks
+jupyter notebook docs/notebooks/
 ```
 
 ## Testing

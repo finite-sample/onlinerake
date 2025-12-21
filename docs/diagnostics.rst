@@ -262,4 +262,4 @@ Both algorithms are robust to extreme parameter settings:
        raker.partial_fit(obs)
        assert np.all(np.isfinite(raker.weights))  # Always finite
 
-For complete examples demonstrating all diagnostic features, see ``examples/diagnostics_demo.py`` in the package repository.
+For complete interactive examples demonstrating all diagnostic features, see the ``03_advanced_diagnostics.ipynb`` notebook in ``docs/notebooks/``.

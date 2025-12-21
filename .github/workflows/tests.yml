@@ -52,8 +52,8 @@ jobs:
         fail_ci_if_error: false
         verbose: true
 
-  test-examples:
-    name: Test Examples
+  test-notebooks:
+    name: Test Notebooks
     runs-on: ubuntu-latest
     needs: test
 
@@ -69,11 +69,11 @@ jobs:
     - name: Set up Python
       run: uv python install
 
-    - name: Install dependencies
-      run: uv sync
+    - name: Install dependencies with docs
+      run: uv sync --group dev --extra docs
 
-    - name: Run simulation examples
-      run: uv run python examples/simulation.py
-        
-    - name: Run realistic examples
-      run: uv run python examples/realistic_examples.py
+    - name: Test notebook execution
+      run: |
+        uv run jupyter nbconvert --to notebook --execute docs/notebooks/01_getting_started.ipynb --output /tmp/test_01.ipynb
+        uv run jupyter nbconvert --to notebook --execute docs/notebooks/02_performance_comparison.ipynb --output /tmp/test_02.ipynb  
+        uv run jupyter nbconvert --to notebook --execute docs/notebooks/03_advanced_diagnostics.ipynb --output /tmp/test_03.ipynb

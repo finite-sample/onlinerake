@@ -30,9 +30,10 @@ Core modules in `onlinerake/`:
 - `online_raking_sgd.py` - SGD-based streaming raking algorithm 
 - `online_raking_mwu.py` - MWU-based algorithm (inherits from SGD)
 
-Example modules in `examples/`:
-- `simulation.py` - Simulation harness for benchmarking algorithms
-- `realistic_examples.py` - Real-world usage examples
+Interactive documentation in `docs/notebooks/`:
+- `01_getting_started.ipynb` - Introduction with visual demonstrations
+- `02_performance_comparison.ipynb` - Algorithm benchmarking and performance analysis
+- `03_advanced_diagnostics.ipynb` - Convergence monitoring and diagnostic tools
 
 Both raking classes follow scikit-learn's `partial_fit` pattern: call `.partial_fit(obs)` for each observation and inspect `.margins`, `.loss`, and `.effective_sample_size` properties.
 
@@ -48,9 +49,8 @@ pip install pytest black flake8 sphinx sphinx-rtd-theme myst-parser
 # Run comprehensive test suite (26 tests including performance & numerical stability)
 pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term
 
-# Run simulation suite and examples
-python3 examples/simulation.py
-python3 examples/realistic_examples.py
+# Run interactive tutorials
+jupyter notebook docs/notebooks/
 
 # Code quality checks (zero tolerance for critical issues)
 flake8 onlinerake --count --select=E9,F63,F7,F82 --show-source --statistics

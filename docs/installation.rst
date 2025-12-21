@@ -53,8 +53,12 @@ Test that the package is working correctly:
    raker.partial_fit(obs)
    print(f"Success! Margins: {raker.margins}")
 
-You can also run the simulation suite:
+You can also explore the interactive tutorials:
 
 .. code-block:: bash
 
-   python examples/simulation.py
+   # Install with documentation dependencies
+   pip install onlinerake[docs]
+   
+   # Launch Jupyter notebooks
+   jupyter notebook docs/notebooks/

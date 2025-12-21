@@ -34,6 +34,11 @@ jobs:
     - name: Build documentation
       run: |
         cd docs
+        # Execute notebooks first to ensure they work and generate outputs
+        uv run jupyter nbconvert --to notebook --execute notebooks/01_getting_started.ipynb --inplace
+        uv run jupyter nbconvert --to notebook --execute notebooks/02_performance_comparison.ipynb --inplace  
+        uv run jupyter nbconvert --to notebook --execute notebooks/03_advanced_diagnostics.ipynb --inplace
+        # Build docs with executed notebooks
         uv run sphinx-build -b html . _build/html
     - name: Setup Pages
       uses: actions/configure-pages@v5

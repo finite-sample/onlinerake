@@ -186,30 +186,26 @@ Side-by-side comparison of both algorithms:
    print(f"Loss (squared error) |        | {sgd_raker.loss:.5f} | {mwu_raker.loss:.5f}")
    print(f"Effective Sample Size|        | {sgd_raker.effective_sample_size:.1f} | {mwu_raker.effective_sample_size:.1f}")
 
-Running the Examples
--------------------
+Interactive Examples
+--------------------
 
-All examples are available in the repository as ``realistic_examples.py``:
-
-.. code-block:: bash
-
-   python realistic_examples.py
-
-You can also run the simulation and benchmarking suite:
+For hands-on learning with visualizations and detailed explanations, check out our **interactive Jupyter notebooks**:
 
 .. code-block:: bash
 
-   python examples/simulation.py
+   # Install documentation dependencies
+   pip install onlinerake[docs]
+   
+   # Navigate to notebooks
+   cd docs/notebooks/
+   
+   # Launch Jupyter
+   jupyter notebook
 
-The simulation script provides various command-line options:
+Available interactive notebooks:
 
-.. code-block:: bash
+- ``01_getting_started.ipynb`` - Introduction with visual demonstrations
+- ``02_performance_comparison.ipynb`` - Algorithm benchmarking and analysis
+- ``03_advanced_diagnostics.ipynb`` - Convergence monitoring and diagnostics
 
-   python examples/simulation.py --help
-   python examples/simulation.py --seeds 5 --n-obs 500
-
-Available examples in the ``examples/`` folder:
-
-- ``realistic_examples.py`` - Real-world usage scenarios
-- ``simulation.py`` - Algorithm benchmarking and performance evaluation  
-- ``diagnostics_demo.py`` - Monitoring and convergence analysis tools
+The notebooks provide comprehensive examples with plots, real-time progress tracking, and clear visual validation that the algorithms work correctly.

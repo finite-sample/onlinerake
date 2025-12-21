@@ -34,10 +34,7 @@ jobs:
       run: uv sync --group dev --group test
         
     - name: Run tests
-      run: |
-        uv run pytest tests/test_onlinerake.py -v
-        uv run python examples/simulation.py
-        uv run python examples/realistic_examples.py
+      run: uv run pytest tests/test_onlinerake.py -v
   publish:
     name: Build and Publish Package
     runs-on: ubuntu-latest
