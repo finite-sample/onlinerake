@@ -58,16 +58,6 @@ class Targets:
     """
 
     def __init__(self, **kwargs: float) -> None:
-        """Initialize targets with named proportions.
-
-        Args:
-            **kwargs: Feature name to target proportion mappings.
-                Each value must be between 0 and 1 inclusive.
-                At least one feature must be specified.
-
-        Raises:
-            ValueError: If any proportion is outside [0, 1] or if no features provided.
-        """
         if not kwargs:
             raise ValueError(
                 "At least one feature must be specified. "

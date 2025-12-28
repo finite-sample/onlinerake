@@ -72,6 +72,10 @@ class OnlineRakingSGD:
         ...     if raker.converged:
         ...         break
 
+    Raises:
+        ValueError: If any parameter is invalid (negative learning rate, invalid
+            weight bounds, non-positive convergence window, invalid compute_weight_stats).
+
     Note:
         The algorithm supports arbitrary binary features, not limited to
         demographics. Feature names must match those defined in targets.

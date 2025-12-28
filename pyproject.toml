@@ -7,7 +7,7 @@ name = "onlinerake"
 version = "1.0.0"
 description = "Streaming survey raking via SGD and MWU"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [
     { name = "Gaurav Sood", email = "gsood07@gmail.com" }
 ]
@@ -39,12 +39,12 @@ module-name = "onlinerake"
 module-root = ""
 
 [dependency-groups]
-dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.7.0", "mypy>=1.0", "pre-commit>=3.0", "twine>=4.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.7.0", "mypy>=1.0", "pre-commit>=3.0", "twine>=4.0", "pydoclint>=0.5.0", "pyright>=1.1.0"]
 test = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 exclude = ["docs/notebooks/*.ipynb"]
 
 [tool.ruff.lint]
@@ -56,10 +56,27 @@ ignore = ["E501", "B008"]
 "tests/*" = ["S101"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true
+
+[tool.pydoclint]
+style = "google"
+arg-type-hints-in-docstring = false
+check-return-types = false
+check-arg-names = true
+check-class-attributes = false
+require-return-section-when-returning-nothing = false
+check-yield-types = true
+skip-checking-raises = true
+
+[tool.pyright]
+include = ["onlinerake"]
+exclude = ["tests", "docs", "ms"]
+reportMissingImports = true
+reportMissingTypeStubs = false
+pythonVersion = "3.12"
 
 [tool.deptry]
 # Exclude manuscript folder from dependency checking
