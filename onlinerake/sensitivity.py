@@ -133,6 +133,7 @@ def run_sensitivity_analysis(
                         np.random.seed(seed)
 
                         # Create raker
+                        raker: OnlineRakingSGD | OnlineRakingMWU
                         if algorithm.lower() == "mwu":
                             raker = OnlineRakingMWU(
                                 targets,

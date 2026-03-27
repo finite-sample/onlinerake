@@ -388,7 +388,7 @@ def estimate_lipschitz_constant(
 
         if w_diff > 1e-10:
             ratio = grad_diff / w_diff
-            max_ratio = max(max_ratio, ratio)
+            max_ratio = max(max_ratio, float(ratio))
 
     return float(max_ratio)
 

@@ -135,7 +135,7 @@ class PolynomialDecayLR(LearningRateSchedule):
         # Avoid division by zero at t=0
         effective_t = max(t, 1)
         lr = self._initial_lr / (effective_t**self._power)
-        return max(lr, self._min_lr)
+        return float(max(lr, self._min_lr))
 
     def get_params(self) -> dict[str, Any]:
         return {

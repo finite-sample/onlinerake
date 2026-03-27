@@ -170,7 +170,7 @@ def compute_confidence_interval(
     else:
         # Linear interpolation for other levels (approximate)
         try:
-            from scipy import stats
+            from scipy import stats  # type: ignore[import-untyped]
 
             z = stats.norm.ppf(1 - (1 - confidence_level) / 2)
         except ImportError:
