@@ -214,6 +214,52 @@ Practical Examples
            if stats['outliers_count'] > raker._n_obs * 0.1:
                print("  Warning: High proportion of weight outliers")
 
+Learning Rate Convergence Verification
+---------------------------------------
+
+The ``verify_robbins_monro()`` function checks whether a learning rate schedule satisfies the Robbins-Monro conditions for stochastic approximation convergence:
+
+1. **Condition 1**: Σ η_t = ∞ (learning rates sum to infinity)
+2. **Condition 2**: Σ η_t² < ∞ (squared learning rates are summable)
+
+**Analytical Verification for Known Schedules**
+
+For known schedule types (``ConstantLR``, ``PolynomialDecayLR``, ``InverseTimeDecayLR``), the function provides analytical verification with mathematical proofs:
+
+.. code-block:: python
+
+   from onlinerake import PolynomialDecayLR
+   from onlinerake.convergence import verify_robbins_monro
+
+   # Polynomial decay with power > 0.5 satisfies both conditions
+   schedule = PolynomialDecayLR(initial_lr=10.0, power=0.6)
+   result = verify_robbins_monro(schedule)
+
+   print(result.condition_1_satisfied)  # True
+   print(result.condition_2_satisfied)  # True
+   print(result.explanation)  # Mathematical proof
+
+**Schedule-specific behavior:**
+
+- ``ConstantLR``: Condition 1 satisfied (divergent), Condition 2 fails (constant series)
+- ``PolynomialDecayLR(power=p)``: Both satisfied when 0.5 < p ≤ 1.0
+- ``InverseTimeDecayLR``: Both satisfied (1/t decay)
+
+**Custom Schedules**
+
+For custom schedules, the function falls back to numerical estimation with clear disclaimers:
+
+.. code-block:: python
+
+   from onlinerake.learning_rate import LearningRateSchedule
+
+   class CustomSchedule(LearningRateSchedule):
+       def __call__(self, t: int) -> float:
+           return 1.0 / (t + 1) ** 0.7
+
+   result = verify_robbins_monro(CustomSchedule())
+   # Returns numerical approximation with explanation noting it's an estimate
+
 Numerical Stability and Robustness
 -----------------------------------
 

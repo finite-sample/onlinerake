@@ -5,8 +5,8 @@ title: "onlinerake: Streaming Survey Raking for Real-time Weight Calibration"
 authors:
   - family-names: "Sood"
     given-names: "Gaurav"
-repository-code: "https://github.com/soodoku/onlinerake"
-url: "https://github.com/soodoku/onlinerake"
+repository-code: "https://github.com/finite-sample/onlinerake"
+url: "https://github.com/finite-sample/onlinerake"
 abstract: "A Python package for streaming survey raking (weight calibration) using SGD and MWU algorithms. Enables real-time weight adjustment for streaming survey data to match known population margins."
 keywords:
   - "survey weighting"

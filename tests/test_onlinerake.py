@@ -28,6 +28,55 @@ class TestTargets:
         expected = {"feature_a": 0.6, "feature_b": 0.4, "feature_c": 0.7}
         assert target_dict == expected
 
+    def test_continuous_feature(self):
+        """Test continuous feature with tuple syntax."""
+        targets = Targets(age=(35.0, "mean"), income=(65000.0, "mean"))
+        assert targets["age"] == 35.0
+        assert targets["income"] == 65000.0
+        assert targets.is_continuous("age")
+        assert targets.is_continuous("income")
+        assert targets.feature_type("age") == "continuous"
+
+    def test_mixed_binary_and_continuous(self):
+        """Test mixing binary and continuous features."""
+        targets = Targets(
+            gender=0.5,
+            college=0.35,
+            age=(42.0, "mean"),
+            income=(65000, "mean"),
+        )
+        assert targets.is_binary("gender")
+        assert targets.is_binary("college")
+        assert targets.is_continuous("age")
+        assert targets.is_continuous("income")
+        assert targets["gender"] == 0.5
+        assert targets["age"] == 42.0
+        assert targets.binary_features == ["college", "gender"]
+        assert targets.continuous_features == ["age", "income"]
+        assert targets.has_continuous_features
+
+    def test_continuous_validation_bad_type(self):
+        """Test that invalid tuple syntax raises error."""
+        with pytest.raises(ValueError, match="must be 'mean'"):
+            Targets(age=(35.0, "median"))
+
+    def test_continuous_validation_bad_length(self):
+        """Test that wrong tuple length raises error."""
+        with pytest.raises(ValueError, match="tuple of length"):
+            Targets(age=(35.0, "mean", "extra"))
+
+    def test_binary_out_of_range(self):
+        """Test that binary targets must be in [0, 1]."""
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            Targets(gender=1.5)
+
+    def test_repr_mixed(self):
+        """Test repr with mixed features."""
+        targets = Targets(gender=0.5, age=(35.0, "mean"))
+        repr_str = repr(targets)
+        assert "gender=0.50" in repr_str
+        assert "age=35.00 [mean]" in repr_str
+
 
 class TestOnlineRakingSGD:
     """Test the SGD-based online raking algorithm."""
@@ -551,7 +600,7 @@ def test_mwu_exponent_clipping_no_overflow():
 
     # Stream deliberately extreme cases that would produce large gradients
     for _ in range(50):
-        obs = {"feature_a": 1, "feature_b": 0, "feature_c": 1, "feature_d": 0}
+        obs = {"age": 1, "gender": 0, "education": 1, "region": 0}
         mwu.partial_fit(obs)
 
         # All weights must remain finite after each update
@@ -566,6 +615,260 @@ def test_mwu_exponent_clipping_no_overflow():
 
         # Loss must remain finite
         assert np.isfinite(mwu.loss), "Loss became infinite or NaN"
+
+
+class TestContinuousCovariates:
+    """Test continuous covariate support."""
+
+    def test_sgd_continuous_only(self):
+        """Test SGD with continuous features only."""
+        targets = Targets(age=(35.0, "mean"), income=(50000.0, "mean"))
+        raker = OnlineRakingSGD(targets, learning_rate=0.5)
+
+        # Process observations
+        observations = [
+            {"age": 25.0, "income": 30000.0},
+            {"age": 30.0, "income": 45000.0},
+            {"age": 40.0, "income": 60000.0},
+            {"age": 45.0, "income": 70000.0},
+        ]
+
+        for obs in observations:
+            raker.partial_fit(obs)
+
+        assert raker._n_obs == 4
+        assert len(raker.weights) == 4
+        assert all(w > 0 for w in raker.weights)
+        assert np.all(np.isfinite(raker.weights))
+
+        # Margins should be computed
+        margins = raker.margins
+        assert "age" in margins
+        assert "income" in margins
+        assert np.isfinite(margins["age"])
+        assert np.isfinite(margins["income"])
+
+    def test_sgd_mixed_features(self):
+        """Test SGD with mixed binary and continuous features."""
+        targets = Targets(
+            gender=0.5,
+            college=0.35,
+            age=(42.0, "mean"),
+            income=(65000.0, "mean"),
+        )
+        raker = OnlineRakingSGD(targets, learning_rate=1.0)
+
+        # Process observations with mixed types
+        observations = [
+            {"gender": 1, "college": 0, "age": 35.0, "income": 52000.0},
+            {"gender": 0, "college": 1, "age": 28.0, "income": 45000.0},
+            {"gender": 1, "college": 1, "age": 55.0, "income": 85000.0},
+            {"gender": 0, "college": 0, "age": 42.0, "income": 62000.0},
+        ]
+
+        for obs in observations:
+            raker.partial_fit(obs)
+
+        assert raker._n_obs == 4
+        margins = raker.margins
+        assert 0 <= margins["gender"] <= 1
+        assert 0 <= margins["college"] <= 1
+        assert margins["age"] > 0
+        assert margins["income"] > 0
+
+    def test_sgd_continuous_convergence(self):
+        """Test that SGD converges toward continuous targets."""
+        targets = Targets(age=(40.0, "mean"))
+        raker = OnlineRakingSGD(targets, learning_rate=2.0)
+
+        # Create observations with mean different from target
+        np.random.seed(42)
+        ages = np.random.normal(35, 5, 100)
+
+        for age in ages:
+            raker.partial_fit({"age": age})
+
+        # Loss should decrease over time
+        initial_losses = [h["loss"] for h in raker.history[:10]]
+        final_losses = [h["loss"] for h in raker.history[-10:]]
+        assert np.mean(final_losses) < np.mean(initial_losses)
+
+        # Weighted margin should be closer to target than raw
+        raw_mean = ages.mean()
+        weighted_mean = raker.margins["age"]
+        raw_error = abs(raw_mean - 40.0)
+        weighted_error = abs(weighted_mean - 40.0)
+        assert weighted_error < raw_error
+
+    def test_mwu_continuous(self):
+        """Test MWU with continuous features."""
+        targets = Targets(age=(35.0, "mean"), height=(170.0, "mean"))
+        raker = OnlineRakingMWU(targets, learning_rate=0.5)
+
+        observations = [
+            {"age": 25.0, "height": 165.0},
+            {"age": 35.0, "height": 175.0},
+            {"age": 45.0, "height": 180.0},
+            {"age": 30.0, "height": 168.0},
+        ]
+
+        for obs in observations:
+            raker.partial_fit(obs)
+
+        assert raker._n_obs == 4
+        assert np.all(np.isfinite(raker.weights))
+        assert np.all(raker.weights > 0)
+
+    def test_large_scale_continuous_feature(self):
+        """Test numerical stability with large-scale features like income."""
+        targets = Targets(income=(75000.0, "mean"))
+        raker = OnlineRakingSGD(targets, learning_rate=0.001)
+
+        np.random.seed(123)
+        incomes = np.random.lognormal(mean=10.5, sigma=0.5, size=100)
+
+        for income in incomes:
+            raker.partial_fit({"income": income})
+
+        # Should remain numerically stable
+        assert np.all(np.isfinite(raker.weights))
+        assert np.isfinite(raker.loss)
+        assert np.isfinite(raker.margins["income"])
+
+    def test_mixed_feature_bias_correction(self):
+        """Test bias correction with mixed features."""
+        targets = Targets(
+            female=0.5,
+            age=(35.0, "mean"),
+        )
+        raker = OnlineRakingSGD(targets, learning_rate=2.0)
+
+        # Biased sample: more males (female=0), younger (age<35)
+        np.random.seed(42)
+        n_obs = 100
+        for _ in range(n_obs):
+            female = 1 if np.random.random() < 0.3 else 0
+            age = np.random.normal(28, 5)
+            raker.partial_fit({"female": female, "age": age})
+
+        # Both margins should move toward targets
+        margins = raker.margins
+        assert margins["female"] > 0.3
+        assert margins["age"] > 28
+
+
+class TestBatchIPFContinuousError:
+    """Test that BatchIPF properly rejects continuous features."""
+
+    def test_batch_ipf_rejects_continuous(self):
+        """Test that BatchIPF raises error for continuous features."""
+        from onlinerake import BatchIPF
+
+        targets = Targets(gender=0.5, age=(35.0, "mean"))
+        ipf = BatchIPF(targets)
+
+        observations = [
+            {"gender": 1, "age": 25.0},
+            {"gender": 0, "age": 45.0},
+        ]
+
+        with pytest.raises(ValueError, match="BatchIPF only supports binary features"):
+            ipf.fit(observations)
+
+    def test_batch_ipf_incremental_rejects_continuous(self):
+        """Test that fit_incremental also rejects continuous features."""
+        from onlinerake import BatchIPF
+
+        targets = Targets(income=(50000.0, "mean"))
+        ipf = BatchIPF(targets)
+
+        with pytest.raises(ValueError, match="BatchIPF only supports binary features"):
+            ipf.fit_incremental([{"income": 45000.0}])
+
+    def test_batch_ipf_binary_still_works(self):
+        """Test that BatchIPF still works with binary features."""
+        from onlinerake import BatchIPF
+
+        targets = Targets(gender=0.5, education=0.4)
+        ipf = BatchIPF(targets)
+
+        observations = [
+            {"gender": 1, "education": 0},
+            {"gender": 0, "education": 1},
+            {"gender": 1, "education": 1},
+            {"gender": 0, "education": 0},
+        ]
+
+        ipf.fit(observations)
+        assert ipf._n_obs == 4
+        assert len(ipf.weights) == 4
+
+
+class TestContinuousDiagnostics:
+    """Test diagnostics with continuous features."""
+
+    def test_variance_estimation_continuous(self):
+        """Test variance estimation for continuous features."""
+        from onlinerake.diagnostics import estimate_margin_variance
+
+        targets = Targets(age=(35.0, "mean"))
+        raker = OnlineRakingSGD(targets, learning_rate=1.0)
+
+        ages = [25.0, 30.0, 35.0, 40.0, 45.0]
+        for age in ages:
+            raker.partial_fit({"age": age})
+
+        variance = estimate_margin_variance(raker, "age")
+        assert np.isfinite(variance)
+        assert variance >= 0
+
+    def test_feasibility_continuous(self):
+        """Test feasibility check for continuous features."""
+        from onlinerake.diagnostics import check_target_feasibility
+
+        # Infeasible target: outside sample range
+        targets = Targets(age=(100.0, "mean"))
+        raker = OnlineRakingSGD(targets, learning_rate=1.0)
+
+        ages = [25.0, 30.0, 35.0, 40.0, 45.0]
+        for age in ages:
+            raker.partial_fit({"age": age})
+
+        report = check_target_feasibility(raker)
+        assert not report.is_feasible
+        assert "age" in report.problematic_features
+
+    def test_feasibility_continuous_feasible(self):
+        """Test feasibility for achievable continuous target."""
+        from onlinerake.diagnostics import check_target_feasibility
+
+        # Feasible target: within sample range
+        targets = Targets(age=(35.0, "mean"))
+        raker = OnlineRakingSGD(targets, learning_rate=1.0)
+
+        ages = [25.0, 30.0, 35.0, 40.0, 45.0]
+        for age in ages:
+            raker.partial_fit({"age": age})
+
+        report = check_target_feasibility(raker)
+        assert report.is_feasible or "age" not in report.problematic_features
+
+    def test_confidence_interval_continuous(self):
+        """Test confidence interval for continuous features."""
+        from onlinerake.diagnostics import compute_confidence_interval
+
+        targets = Targets(age=(35.0, "mean"))
+        raker = OnlineRakingSGD(targets, learning_rate=1.0)
+
+        ages = [25.0, 30.0, 35.0, 40.0, 45.0]
+        for age in ages:
+            raker.partial_fit({"age": age})
+
+        lower, upper = compute_confidence_interval(raker, "age")
+        # For continuous, no clamping to [0,1]
+        assert np.isfinite(lower)
+        assert np.isfinite(upper)
+        assert lower < upper
 
 
 if __name__ == "__main__":

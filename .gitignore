@@ -206,3 +206,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .DS_Store
+
+# Evaluation outputs
+eval_outputs/
+outputs/
+
+# Generated figures
+scripts/figures/*.png
+scripts/figures/*.pdf

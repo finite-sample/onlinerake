@@ -52,14 +52,112 @@ Note:
     Users must explicitly specify their features and target proportions.
 """
 
+from .batch_ipf import BatchIPF
+from .convergence import (
+    ConvergenceAnalysis,
+    RobbinsMonroVerification,
+    analyze_convergence,
+    estimate_lipschitz_constant,
+    mwu_convergence_analysis,
+    theoretical_convergence_bound,
+    verify_convergence_conditions,
+    verify_robbins_monro,
+)
+from .diagnostics import (
+    FeasibilityReport,
+    InfeasibilityAnalysis,
+    MarginEstimate,
+    analyze_infeasibility,
+    check_target_feasibility,
+    compute_confidence_interval,
+    compute_design_effect,
+    compute_weight_efficiency,
+    estimate_margin_std_error,
+    estimate_margin_variance,
+    explain_infeasibility_causes,
+    get_margin_estimates,
+    suggest_feasible_targets,
+    summarize_raking_results,
+)
+from .learning_rate import (
+    AdaptiveLR,
+    ConstantLR,
+    InverseTimeDecayLR,
+    LearningRateSchedule,
+    PolynomialDecayLR,
+    robbins_monro_schedule,
+)
 from .online_raking_mwu import OnlineRakingMWU
 from .online_raking_sgd import OnlineRakingSGD
+from .sensitivity import (
+    SensitivityReport,
+    SensitivityResult,
+    quick_sensitivity_check,
+    run_sensitivity_analysis,
+)
+from .streaming_inference import (
+    ConfidenceSequence,
+    RetroactiveImpact,
+    StreamingEstimator,
+    StreamingSnapshot,
+    analyze_estimate_stability,
+    compute_confidence_sequence,
+    estimate_path_dependent_variance,
+    explain_streaming_semantics,
+)
 from .targets import Targets
 
 __all__ = [
+    # Core algorithms
     "Targets",
     "OnlineRakingSGD",
     "OnlineRakingMWU",
+    "BatchIPF",
+    # Learning rate schedules
+    "LearningRateSchedule",
+    "ConstantLR",
+    "InverseTimeDecayLR",
+    "PolynomialDecayLR",
+    "AdaptiveLR",
+    "robbins_monro_schedule",
+    # Convergence analysis
+    "ConvergenceAnalysis",
+    "RobbinsMonroVerification",
+    "verify_robbins_monro",
+    "estimate_lipschitz_constant",
+    "analyze_convergence",
+    "theoretical_convergence_bound",
+    "mwu_convergence_analysis",
+    "verify_convergence_conditions",
+    # Diagnostics and variance estimation
+    "MarginEstimate",
+    "FeasibilityReport",
+    "InfeasibilityAnalysis",
+    "estimate_margin_variance",
+    "estimate_margin_std_error",
+    "compute_confidence_interval",
+    "get_margin_estimates",
+    "check_target_feasibility",
+    "analyze_infeasibility",
+    "suggest_feasible_targets",
+    "explain_infeasibility_causes",
+    "compute_design_effect",
+    "compute_weight_efficiency",
+    "summarize_raking_results",
+    # Streaming inference
+    "StreamingSnapshot",
+    "ConfidenceSequence",
+    "RetroactiveImpact",
+    "StreamingEstimator",
+    "compute_confidence_sequence",
+    "estimate_path_dependent_variance",
+    "explain_streaming_semantics",
+    "analyze_estimate_stability",
+    # Sensitivity analysis
+    "SensitivityResult",
+    "SensitivityReport",
+    "run_sensitivity_analysis",
+    "quick_sensitivity_check",
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.3.0"

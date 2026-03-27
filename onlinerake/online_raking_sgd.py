@@ -18,12 +18,15 @@ The class follows the scikit-learn ``partial_fit`` API pattern.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
 
 from .targets import Targets
+
+if TYPE_CHECKING:
+    from .learning_rate import LearningRateSchedule
 
 
 class OnlineRakingSGD:
@@ -36,8 +39,10 @@ class OnlineRakingSGD:
 
     Args:
         targets: Target population proportions for each feature.
-        learning_rate: Step size for gradient descent updates. Larger values
-            lead to more aggressive updates but may cause oscillation. Default: 5.0.
+        learning_rate: Step size for gradient descent updates. Can be:
+            - float: Fixed learning rate (default: 5.0)
+            - LearningRateSchedule: Dynamic schedule (e.g., robbins_monro_schedule())
+            Larger values lead to faster convergence but may cause oscillation.
         min_weight: Lower bound for weights to prevent collapse. Must be positive.
             Default: 0.001.
         max_weight: Upper bound for weights to prevent explosion. Must exceed
@@ -84,7 +89,7 @@ class OnlineRakingSGD:
     def __init__(
         self,
         targets: Targets,
-        learning_rate: float = 5.0,
+        learning_rate: float | LearningRateSchedule = 5.0,
         min_weight: float = 1e-3,
         max_weight: float = 100.0,
         n_sgd_steps: int = 3,
@@ -94,8 +99,17 @@ class OnlineRakingSGD:
         compute_weight_stats: bool | int = False,
         max_history: int | None = 1000,
     ) -> None:
-        if learning_rate <= 0:
-            raise ValueError("learning_rate must be positive")
+        # Handle learning rate - can be float or schedule
+        if isinstance(learning_rate, (int, float)):
+            if learning_rate <= 0:
+                raise ValueError("learning_rate must be positive")
+            self._lr_schedule = None
+            self._base_learning_rate = float(learning_rate)
+        else:
+            # Assume it's a LearningRateSchedule
+            self._lr_schedule = learning_rate
+            self._base_learning_rate = learning_rate(1)
+
         if min_weight <= 0:
             raise ValueError("min_weight must be strictly positive")
         if max_weight <= min_weight:
@@ -104,21 +118,22 @@ class OnlineRakingSGD:
             raise ValueError("n_sgd_steps must be a positive integer")
         if convergence_window < 1:
             raise ValueError("convergence_window must be a positive integer")
-        if not isinstance(compute_weight_stats, (bool, int)):
-            raise ValueError(
-                "compute_weight_stats must be True, False, or a positive integer"
-            )
-        if (
-            isinstance(compute_weight_stats, int)
-            and not isinstance(compute_weight_stats, bool)
-            and compute_weight_stats < 1
+        if not isinstance(compute_weight_stats, bool) and not isinstance(
+            compute_weight_stats, int
         ):
             raise ValueError(
                 "compute_weight_stats must be True, False, or a positive integer"
             )
+        if isinstance(compute_weight_stats, int) and not isinstance(
+            compute_weight_stats, bool
+        ):
+            if compute_weight_stats < 1:
+                raise ValueError(
+                    "compute_weight_stats must be True, False, or a positive integer"
+                )
 
         self.targets = targets
-        self.learning_rate = learning_rate
+        self.learning_rate = self._base_learning_rate
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.n_sgd_steps = n_sgd_steps
@@ -137,8 +152,9 @@ class OnlineRakingSGD:
         self._weights: np.ndarray = np.empty(0, dtype=np.float64)
 
         # Store features as a single 2D array for efficiency
+        # Use float64 to support both binary (0/1) and continuous features
         self._features_capacity: int = 0
-        self._features: np.ndarray = np.empty((0, self._n_features), dtype=np.int8)
+        self._features: np.ndarray = np.empty((0, self._n_features), dtype=np.float64)
         self._n_obs: int = 0
 
         # Precomputed target array for efficiency
@@ -156,12 +172,30 @@ class OnlineRakingSGD:
         # convergence tracking
         self._loss_history: list[float] = []
         self._gradient_norms: list[float] = []
+        self._learning_rate_history: list[float] = []
         self._converged: bool = False
         self._convergence_step: int | None = None
 
     # ------------------------------------------------------------------
     # Utility properties
     # ------------------------------------------------------------------
+    @property
+    def current_learning_rate(self) -> float:
+        """Get current learning rate (may vary if using a schedule)."""
+        if self._lr_schedule is not None and self._n_obs > 0:
+            return self._lr_schedule(self._n_obs)
+        return self._base_learning_rate
+
+    @property
+    def learning_rate_history(self) -> list[float]:
+        """Get history of learning rates used at each observation."""
+        return self._learning_rate_history.copy()
+
+    @property
+    def uses_lr_schedule(self) -> bool:
+        """Return True if using a dynamic learning rate schedule."""
+        return self._lr_schedule is not None
+
     @property
     def weights(self) -> npt.NDArray[np.float64]:
         """Get copy of current weight vector.
@@ -436,6 +470,18 @@ class OnlineRakingSGD:
     # ------------------------------------------------------------------
     # Core logic
     # ------------------------------------------------------------------
+    def _get_current_learning_rate(self) -> float:
+        """Get the learning rate for the current observation.
+
+        Returns:
+            Current learning rate, either fixed or from schedule.
+        """
+        if self._lr_schedule is not None:
+            lr = self._lr_schedule(self._n_obs)
+            self.learning_rate = lr  # Update for inspection
+            return lr
+        return self._base_learning_rate
+
     def _compute_gradient(self) -> npt.NDArray[np.float64]:
         """Compute gradient of the margin loss with respect to weights.
 
@@ -505,7 +551,7 @@ class OnlineRakingSGD:
         # Expand features array
         if self._n_obs >= self._features_capacity:
             new_capacity = max(8, self._features_capacity * 2, self._n_obs + 1)
-            new_features = np.zeros((new_capacity, self._n_features), dtype=np.int8)
+            new_features = np.zeros((new_capacity, self._n_features), dtype=np.float64)
             if self._features_capacity > 0:
                 new_features[: self._features_capacity] = self._features[
                     : self._features_capacity
@@ -526,6 +572,7 @@ class OnlineRakingSGD:
         """
         current_loss = self.loss
         self._loss_history.append(current_loss)
+        self._learning_rate_history.append(self.learning_rate)
 
         # Store gradient norm if provided
         if gradient_norm is not None:
@@ -534,6 +581,7 @@ class OnlineRakingSGD:
         state = {
             "n_obs": self._n_obs,
             "loss": current_loss,
+            "learning_rate": self.learning_rate,
             "weighted_margins": self.margins,
             "raw_margins": self.raw_margins,
             "ess": self.effective_sample_size,
@@ -559,22 +607,27 @@ class OnlineRakingSGD:
         """Process single observation and update weights.
 
         Args:
-            obs: Observation containing feature indicators. Can be:
+            obs: Observation containing feature values. Can be:
                 - dict: Keys should match feature names in targets
                 - object: Features accessed as attributes
-                Values should be binary (0/1 or False/True).
+                For binary features: values should be 0/1 or False/True.
+                For continuous features: values should be numeric (float/int).
                 Missing features default to 0.
 
         Returns:
             None. Updates internal state in place.
 
         Examples:
+            >>> # Binary features only
             >>> targets = Targets(owns_car=0.4, is_subscriber=0.2)
             >>> raker = OnlineRakingSGD(targets)
-            >>>
-            >>> # Dict input
             >>> raker.partial_fit({'owns_car': 1, 'is_subscriber': 0})
-            >>>
+
+            >>> # Mixed binary and continuous features
+            >>> targets = Targets(gender=0.5, age=(35.0, "mean"))
+            >>> raker = OnlineRakingSGD(targets)
+            >>> raker.partial_fit({'gender': 1, 'age': 42.5})
+
             >>> # Object input (e.g., dataclass or namedtuple)
             >>> from dataclasses import dataclass
             >>> @dataclass
@@ -591,18 +644,26 @@ class OnlineRakingSGD:
         self._expand_capacity()
 
         # Extract feature values in the correct order
-        feature_values = np.zeros(self._n_features, dtype=np.int8)
+        feature_values = np.zeros(self._n_features, dtype=np.float64)
         for i, name in enumerate(self._feature_names):
             if isinstance(obs, dict):
                 val = obs.get(name, 0)
             else:
                 val = getattr(obs, name, 0)
-            feature_values[i] = int(bool(val))
+
+            # Handle binary vs continuous features
+            if self.targets.is_binary(name):
+                feature_values[i] = 1.0 if val else 0.0
+            else:
+                feature_values[i] = float(val)
 
         # Store the observation
         self._features[self._n_obs] = feature_values
         self._weights[self._n_obs] = 1.0
         self._n_obs += 1
+
+        # Get current learning rate (may be from schedule)
+        current_lr = self._get_current_learning_rate()
 
         # perform n_sgd_steps updates
         final_gradient_norm = 0.0
@@ -615,7 +676,7 @@ class OnlineRakingSGD:
                 final_gradient_norm = gradient_norm
 
             # Update only active weights
-            self._weights[: self._n_obs] -= self.learning_rate * grad
+            self._weights[: self._n_obs] -= current_lr * grad
             # clip weights
             np.clip(
                 self._weights[: self._n_obs],

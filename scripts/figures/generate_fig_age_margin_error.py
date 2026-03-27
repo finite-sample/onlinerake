@@ -201,6 +201,8 @@ def simulate_age_error_linear_drift(n_obs: int = 300, n_seeds: int = 5):
 
 
 def main():
+    from pathlib import Path
+
     n_obs = 300
     n_seeds = 5
     errors_sgd, errors_mwu, errors_base = simulate_age_error_linear_drift(
@@ -216,11 +218,9 @@ def main():
     plt.title("Absolute age margin error over time in linear drift scenario")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("fig_age_margin_error.png")
-    import logging
-
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logging.info("Figure saved as fig_age_margin_error.png")
+    output_path = Path(__file__).parent / "fig_age_margin_error.png"
+    plt.savefig(output_path)
+    print(f"Figure saved as {output_path}")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "onlinerake"
-version = "1.0.0"
+version = "1.3.0"
 description = "Streaming survey raking via SGD and MWU"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,11 +12,26 @@ authors = [
     { name = "Gaurav Sood", email = "gsood07@gmail.com" }
 ]
 license = { text = "MIT" }
+keywords = ["survey", "raking", "calibration", "weighting", "streaming", "online-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
 
 dependencies = [
     "numpy>=1.21",
     "pandas>=1.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/finite-sample/onlinerake"
+Documentation = "https://finite-sample.github.io/onlinerake/"
+Repository = "https://github.com/finite-sample/onlinerake"
+Issues = "https://github.com/finite-sample/onlinerake/issues"
 
 [project.optional-dependencies]
 docs = [

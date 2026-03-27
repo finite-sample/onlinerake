@@ -23,6 +23,10 @@ The package enables real-time weight adjustment for streaming survey data to mat
 - **Near-zero loss convergence**: Proper handling when loss approaches machine epsilon
 - **Robust weight bounds**: Enhanced clipping prevents numerical instabilities
 
+### Convergence & Streaming Inference Fixes
+- **Analytical Robbins-Monro verification**: `verify_robbins_monro()` uses type dispatch for known schedules (ConstantLR, PolynomialDecayLR, InverseTimeDecayLR) with mathematical proofs
+- **Streaming inference fix**: `StreamingEstimator.partial_fit()` now correctly captures weights BEFORE update to compute meaningful retroactive impact metrics
+
 ## Architecture
 
 Core modules in `onlinerake/`:
@@ -46,8 +50,8 @@ pip install -e .
 # Install development dependencies
 pip install pytest black flake8 sphinx sphinx-rtd-theme myst-parser
 
-# Run comprehensive test suite (26 tests including performance & numerical stability)
-pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term
+# Run comprehensive test suite (105 tests across 3 test files)
+pytest tests/ -v --cov=onlinerake --cov-report=term
 
 # Run interactive tutorials
 jupyter notebook docs/notebooks/
@@ -58,11 +62,20 @@ black --check onlinerake
 
 # Build documentation (includes new diagnostics and performance sections)
 cd docs && make html
+
+# Run comprehensive head-to-head evaluation (quick mode)
+uv run python scripts/eval/comprehensive_eval.py --n_seeds 5 --quick
+
+# Run full evaluation (50 seeds, includes large-scale scenario)
+uv run python scripts/eval/comprehensive_eval.py --n_seeds 50
+
+# Generate evaluation plots and LaTeX table
+uv run python scripts/eval/plot_eval_results.py
 ```
 
 ## Testing
 
-- **Comprehensive test suite**: 26 test cases covering all core functionality, performance, and numerical stability
+- **Comprehensive test suite**: 105 test cases covering core algorithms, new features, and theoretical foundations
 - **Realistic examples**: Gender bias correction, real-time polling, algorithm comparison
 - **CI/CD workflows**: Automated testing on Python 3.10-3.13, code quality checks
 - **Coverage**: High test coverage for critical paths, edge cases, and extreme scenarios

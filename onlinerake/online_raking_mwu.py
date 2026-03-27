@@ -88,10 +88,11 @@ class OnlineRakingMWU(OnlineRakingSGD):
         Parameters
         ----------
         obs : dict or object
-            An observation containing feature indicators. For dict input,
+            An observation containing feature values. For dict input,
             keys should match feature names in targets. For object input,
-            features are accessed as attributes. Values should be binary
-            (0/1 or False/True).
+            features are accessed as attributes. For binary features,
+            values should be 0/1 or False/True. For continuous features,
+            values should be numeric (float/int).
 
         Returns
         -------
@@ -102,13 +103,18 @@ class OnlineRakingMWU(OnlineRakingSGD):
         self._expand_capacity()
 
         # Extract feature values in the correct order
-        feature_values = np.zeros(self._n_features, dtype=np.int8)
+        feature_values = np.zeros(self._n_features, dtype=np.float64)
         for i, name in enumerate(self._feature_names):
             if isinstance(obs, dict):
                 val = obs.get(name, 0)
             else:
                 val = getattr(obs, name, 0)
-            feature_values[i] = int(bool(val))
+
+            # Handle binary vs continuous features
+            if self.targets.is_binary(name):
+                feature_values[i] = 1.0 if val else 0.0
+            else:
+                feature_values[i] = float(val)
 
         # Store the observation
         self._features[self._n_obs] = feature_values
