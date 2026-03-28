@@ -1,0 +1,30 @@
+\begin{table}[t]
+\centering
+\caption{Comparison of raking algorithms (mean $\pm$ SE over 50 seeds).}
+\label{tab:main_results}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Scenario} & \textbf{Algorithm} & \textbf{Loss} & \textbf{ESS} & \textbf{Efficiency} & \textbf{Runtime (s)} \\
+\midrule
+Standard & Batch IPF & $0.00$ & $2314 \pm 30$ & $77.1\%$ & $0.006$ \\
+ & SGD (fixed LR) & $9.4\text{e-}4$ & $2165 \pm 32$ & $72.2\%$ & $0.86$ \\
+ & SGD (R-M) & $0.052 \pm 0.003$ & $2960 \pm 2$ & $98.7\%$ & $0.87$ \\
+ & MWU & $0.010 \pm 0.001$ & $2078 \pm 59$ & $69.3\%$ & $0.98$ \\
+ & Periodic IPF & $0.00$ & $2314 \pm 30$ & $77.1\%$ & $0.02$ \\
+\midrule
+Large & Batch IPF & $0.00$ & $38750 \pm 467$ & $77.5\%$ & $0.08$ \\
+($n\!=\!50\text{k}$) & SGD (fixed LR) & $8.7\text{e-}4$ & $36598 \pm 487$ & $73.2\%$ & $97.1$ \\
+ & SGD (R-M) & $0.060 \pm 0.003$ & $49939 \pm 3$ & $99.9\%$ & $94.1$ \\
+ & MWU & $0.010 \pm 0.001$ & $31806 \pm 1029$ & $63.6\%$ & $119.0$ \\
+ & Periodic IPF & $0.00$ & $38750 \pm 467$ & $77.5\%$ & $1.5$ \\
+\midrule
+Hard Targets & Batch IPF & $0.00$ & $41 \pm 2$ & $1.4\%$ & $0.003$ \\
+ & SGD (fixed LR) & $0.014 \pm 0.001$ & $32 \pm 3$ & $1.1\%$ & $0.52$ \\
+ & SGD (R-M) & $1.15 \pm 0.01$ & $2537 \pm 7$ & $84.6\%$ & $0.53$ \\
+ & MWU & $0.23 \pm 0.004$ & $77 \pm 2$ & $2.6\%$ & $0.59$ \\
+ & Periodic IPF & $0.00$ & $41 \pm 2$ & $1.4\%$ & $0.02$ \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}

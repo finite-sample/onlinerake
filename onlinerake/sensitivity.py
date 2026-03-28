@@ -138,7 +138,7 @@ def run_sensitivity_analysis(
                             raker = OnlineRakingMWU(
                                 targets,
                                 learning_rate=lr,
-                                n_steps=n_steps,
+                                n_sgd_steps=n_steps,
                                 min_weight=min_w,
                                 max_weight=max_w,
                             )

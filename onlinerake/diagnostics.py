@@ -18,8 +18,20 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ._utils import requires_observations
+
 if TYPE_CHECKING:
     from .online_raking_sgd import OnlineRakingSGD
+
+
+# Module-level constants for magic numbers
+WEIGHT_THRESHOLD_RATIO = 0.95
+WEIGHT_LOWER_THRESHOLD_RATIO = 1.05
+MIN_FEASIBILITY_SCORE = 0.5
+PROGRESS_SCORE_BONUS = 0.5
+EXTREME_WEIGHT_RATIO = 1000
+MAX_WEIGHT_RATIO_COMPROMISE = 100
+Z_SCORES: dict[float, float] = {0.90: 1.645, 0.95: 1.960, 0.99: 2.576}
 
 
 @dataclass
@@ -64,6 +76,33 @@ class FeasibilityReport:
     recommendations: list[str]
 
 
+def _estimate_margin_variance_impl(
+    raker: OnlineRakingSGD,
+    feature: str,
+) -> float:
+    """Implementation of margin variance estimation."""
+    ess = raker.effective_sample_size
+    if ess <= 0:
+        return np.nan
+
+    if raker.targets.is_binary(feature):
+        margins = raker.margins
+        p_hat = margins[feature]
+        variance = p_hat * (1 - p_hat) / ess
+    else:
+        feature_idx = raker._feature_names.index(feature)
+        feature_values = raker._features[: raker._n_obs, feature_idx]
+        weights = raker._weights[: raker._n_obs]
+
+        total_w = weights.sum()
+        weighted_mean = (weights * feature_values).sum() / total_w
+        weighted_var = (weights * (feature_values - weighted_mean) ** 2).sum() / total_w
+
+        variance = weighted_var / ess
+
+    return float(variance)
+
+
 def estimate_margin_variance(
     raker: OnlineRakingSGD,
     feature: str,
@@ -91,30 +130,7 @@ def estimate_margin_variance(
     if raker._n_obs == 0:
         return np.nan
 
-    ess = raker.effective_sample_size
-    if ess <= 0:
-        return np.nan
-
-    if raker.targets.is_binary(feature):
-        # Binomial variance for binary features
-        margins = raker.margins
-        p_hat = margins[feature]
-        variance = p_hat * (1 - p_hat) / ess
-    else:
-        # Sample variance for continuous features
-        feature_idx = raker._feature_names.index(feature)
-        feature_values = raker._features[: raker._n_obs, feature_idx]
-        weights = raker._weights[: raker._n_obs]
-
-        # Weighted variance
-        total_w = weights.sum()
-        weighted_mean = (weights * feature_values).sum() / total_w
-        weighted_var = (weights * (feature_values - weighted_mean) ** 2).sum() / total_w
-
-        # Scale by effective sample size
-        variance = weighted_var / ess
-
-    return float(variance)
+    return _estimate_margin_variance_impl(raker, feature)
 
 
 def estimate_margin_std_error(
@@ -158,15 +174,9 @@ def compute_confidence_interval(
     if np.isnan(std_error):
         return (np.nan, np.nan)
 
-    # Z-scores for common confidence levels (avoid scipy dependency)
-    z_table = {
-        0.90: 1.645,
-        0.95: 1.960,
-        0.99: 2.576,
-    }
     # Use closest or interpolate
-    if confidence_level in z_table:
-        z = z_table[confidence_level]
+    if confidence_level in Z_SCORES:
+        z = Z_SCORES[confidence_level]
     else:
         # Linear interpolation for other levels (approximate)
         try:
@@ -334,7 +344,7 @@ def check_target_feasibility(
             if weighted_error < raw_error:
                 # Making progress
                 progress = 1 - (weighted_error / raw_error)
-                scores[feature] = min(1.0, progress + 0.5)
+                scores[feature] = min(1.0, progress + PROGRESS_SCORE_BONUS)
             else:
                 # Not making progress - potential feasibility issue
                 scores[feature] = 0.3
@@ -356,12 +366,12 @@ def check_target_feasibility(
         # Check for extreme weights suggesting feasibility strain
         # Use raker's configured bounds rather than hardcoded values
         weight_stats = raker.weight_distribution_stats
-        at_max = weight_stats["max"] >= raker.max_weight * 0.95
-        at_min = weight_stats["min"] <= raker.min_weight * 1.05
+        at_max = weight_stats["max"] >= raker.max_weight * WEIGHT_THRESHOLD_RATIO
+        at_min = weight_stats["min"] <= raker.min_weight * WEIGHT_LOWER_THRESHOLD_RATIO
         if at_max or at_min:
             if feature not in problematic:
                 problematic.append(feature)
-                scores[feature] = min(scores.get(feature, 1.0), 0.5)
+                scores[feature] = min(scores.get(feature, 1.0), MIN_FEASIBILITY_SCORE)
             extreme_warning = (
                 f"Weights hitting bounds (min={raker.min_weight}, max={raker.max_weight}). "
                 "This may indicate target feasibility strain."
@@ -386,6 +396,7 @@ def check_target_feasibility(
     )
 
 
+@requires_observations(lambda: np.nan)
 def compute_design_effect(raker: OnlineRakingSGD) -> float:
     """Compute the design effect (DEFF) due to weighting.
 
@@ -399,9 +410,6 @@ def compute_design_effect(raker: OnlineRakingSGD) -> float:
     Returns:
         Design effect. Values near 1 indicate minimal precision loss from weighting.
     """
-    if raker._n_obs == 0:
-        return np.nan
-
     ess = raker.effective_sample_size
     if ess <= 0:
         return np.nan
@@ -409,6 +417,7 @@ def compute_design_effect(raker: OnlineRakingSGD) -> float:
     return float(raker._n_obs / ess)
 
 
+@requires_observations(lambda: np.nan)
 def compute_weight_efficiency(raker: OnlineRakingSGD) -> float:
     """Compute weight efficiency (ESS / n).
 
@@ -421,9 +430,6 @@ def compute_weight_efficiency(raker: OnlineRakingSGD) -> float:
     Returns:
         Weight efficiency as a proportion.
     """
-    if raker._n_obs == 0:
-        return np.nan
-
     ess = raker.effective_sample_size
     return float(ess / raker._n_obs)
 
@@ -504,6 +510,7 @@ class InfeasibilityAnalysis:
 
 def analyze_infeasibility(
     raker: OnlineRakingSGD,
+    max_weight_ratio: float = MAX_WEIGHT_RATIO_COMPROMISE,
 ) -> InfeasibilityAnalysis:
     """Analyze why targets may be infeasible and suggest compromises.
 
@@ -516,6 +523,7 @@ def analyze_infeasibility(
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
+        max_weight_ratio: Maximum allowable weight ratio for compromise targets.
 
     Returns:
         InfeasibilityAnalysis with diagnosis and compromise solutions.
@@ -594,15 +602,18 @@ def analyze_infeasibility(
                     raw, target, n_with_feature, n_without_feature
                 )
 
-                if weight_ratio_needed > 1000:
+                if weight_ratio_needed > EXTREME_WEIGHT_RATIO:
                     diagnosis.append(
                         f"'{feature}': Achieving target {target:.1%} from raw {raw:.1%} "
                         f"requires ~{weight_ratio_needed:.0f}:1 weight ratio."
                     )
                     infeasibility_types.append("numerical")
-                    # Compromise: limit to what 100:1 ratio can achieve
                     compromise_targets[feature] = _compute_achievable_with_ratio(
-                        raw, target, n_with_feature, n_without_feature, max_ratio=100
+                        raw,
+                        target,
+                        n_with_feature,
+                        n_without_feature,
+                        max_ratio=max_weight_ratio,
                     )
                 else:
                     compromise_targets[feature] = target
@@ -744,7 +755,7 @@ def suggest_feasible_targets(
         >>> feasible = suggest_feasible_targets(raker, max_weight_ratio=50)
         >>> print(f"Original: 0.90, Feasible: {feasible['feature']:.2f}")
     """
-    analysis = analyze_infeasibility(raker)
+    analysis = analyze_infeasibility(raker, max_weight_ratio=max_weight_ratio)
     return analysis.compromise_targets
 
 

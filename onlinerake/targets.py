@@ -40,6 +40,9 @@ class Targets:
         _feature_types (dict[str, str]): Maps feature names to "binary" or "continuous".
         _feature_names (list[str]): Sorted list of feature names for consistent ordering.
 
+    Private Methods:
+        _validate_feature_exists: Validates that a feature is defined in targets.
+
     Examples:
         >>> # Binary features only (backward compatible)
         >>> targets = Targets(owns_car=0.4, is_subscriber=0.2, likes_coffee=0.7)
@@ -196,6 +199,18 @@ class Targets:
         """
         return "continuous" in self._feature_types.values()
 
+    def _validate_feature_exists(self, feature: str) -> None:
+        """Validate that a feature is defined in targets.
+
+        Args:
+            feature: Feature name to validate.
+
+        Raises:
+            KeyError: If feature name is not defined in targets.
+        """
+        if feature not in self._feature_types:
+            raise KeyError(f"Feature '{feature}' not defined in targets")
+
     def is_binary(self, feature: str) -> bool:
         """Check if a feature is binary.
 
@@ -215,8 +230,7 @@ class Targets:
             >>> targets.is_binary("age")
             False
         """
-        if feature not in self._feature_types:
-            raise KeyError(f"Feature '{feature}' not defined in targets")
+        self._validate_feature_exists(feature)
         return self._feature_types[feature] == "binary"
 
     def is_continuous(self, feature: str) -> bool:
@@ -238,8 +252,7 @@ class Targets:
             >>> targets.is_continuous("gender")
             False
         """
-        if feature not in self._feature_types:
-            raise KeyError(f"Feature '{feature}' not defined in targets")
+        self._validate_feature_exists(feature)
         return self._feature_types[feature] == "continuous"
 
     def feature_type(self, feature: str) -> str:
@@ -261,8 +274,7 @@ class Targets:
             >>> targets.feature_type("age")
             'continuous'
         """
-        if feature not in self._feature_types:
-            raise KeyError(f"Feature '{feature}' not defined in targets")
+        self._validate_feature_exists(feature)
         return self._feature_types[feature]
 
     def as_dict(self) -> dict[str, float]:

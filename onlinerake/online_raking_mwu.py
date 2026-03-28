@@ -22,13 +22,15 @@ attribute definitions and usage examples.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import numpy as np
 from numpy import finfo, log
 
 from .online_raking_sgd import OnlineRakingSGD
+
+# Safety margin for exponent clipping
+EXPONENT_SAFETY_MARGIN = 0.95
 
 
 class OnlineRakingMWU(OnlineRakingSGD):
@@ -49,7 +51,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
     max_weight : float, optional
         Upper bound applied to the weights after each update.  This
         prevents runaway weights.  Must exceed ``min_weight``.
-    n_steps : int, optional
+    n_sgd_steps : int, optional
         Number of multiplicative updates applied each time a new
         observation arrives.
     compute_weight_stats : bool or int, optional
@@ -64,7 +66,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
         learning_rate: float = 1.0,
         min_weight: float = 1e-3,
         max_weight: float = 100.0,
-        n_steps: int = 3,
+        n_sgd_steps: int = 3,
         verbose: bool = False,
         track_convergence: bool = True,
         convergence_window: int = 20,
@@ -75,7 +77,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
             learning_rate=learning_rate,
             min_weight=min_weight,
             max_weight=max_weight,
-            n_sgd_steps=n_steps,
+            n_sgd_steps=n_sgd_steps,
             verbose=verbose,
             track_convergence=track_convergence,
             convergence_window=convergence_window,
@@ -102,19 +104,8 @@ class OnlineRakingMWU(OnlineRakingSGD):
         # Ensure we have capacity
         self._expand_capacity()
 
-        # Extract feature values in the correct order
-        feature_values = np.zeros(self._n_features, dtype=np.float64)
-        for i, name in enumerate(self._feature_names):
-            if isinstance(obs, dict):
-                val = obs.get(name, 0)
-            else:
-                val = getattr(obs, name, 0)
-
-            # Handle binary vs continuous features
-            if self.targets.is_binary(name):
-                feature_values[i] = 1.0 if val else 0.0
-            else:
-                feature_values[i] = float(val)
+        # Extract feature values using inherited helper
+        feature_values = self._extract_feature_values(obs)
 
         # Store the observation
         self._features[self._n_obs] = feature_values
@@ -122,11 +113,8 @@ class OnlineRakingMWU(OnlineRakingSGD):
         self._n_obs += 1
 
         # MWU steps (entropic mirror descent) with safe exponent clipping
-        # Compute log(max float) from dtype to avoid transient inf/0 before clipping
-        # Example: float64 -> ~709.78; float32 -> ~88.72
         max_log = float(log(finfo(self._weights.dtype).max))
-        # Give ourselves a safety margin to stay away from the asymptote
-        max_log *= 0.95  # Slightly more conservative than original 0.99
+        max_log *= EXPONENT_SAFETY_MARGIN
 
         final_gradient_norm = 0.0
         for step in range(self.n_sgd_steps):
@@ -134,7 +122,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
 
             # Calculate gradient norm for convergence monitoring
             gradient_norm = float(np.linalg.norm(grad))
-            if step == self.n_sgd_steps - 1:  # Store only final gradient norm
+            if step == self.n_sgd_steps - 1:
                 final_gradient_norm = gradient_norm
 
             # Clip the exponent argument BEFORE exp to keep everything finite
@@ -143,7 +131,6 @@ class OnlineRakingMWU(OnlineRakingSGD):
             update = np.exp(expo, dtype=self._weights.dtype)
 
             # Multiplicative update + in-range clipping
-            # Update only the active portion of the weights array
             self._weights[: self._n_obs] *= update
             np.clip(
                 self._weights[: self._n_obs],
@@ -152,12 +139,9 @@ class OnlineRakingMWU(OnlineRakingSGD):
                 out=self._weights[: self._n_obs],
             )
 
-            # Verbose output for debugging
-            if self.verbose and self._n_obs % 100 == 0 and step == 0:
-                logging.info(
-                    f"MWU Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
-                    f"ess={self.effective_sample_size:.1f}"
-                )
+            # Verbose output using inherited helper
+            if step == 0:
+                self._log_update("MWU Obs", gradient_norm)
 
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)

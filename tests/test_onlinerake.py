@@ -595,7 +595,7 @@ def test_mwu_exponent_clipping_no_overflow():
         learning_rate=1e6,  # Extremely high learning rate
         min_weight=1e-3,
         max_weight=1e3,
-        n_steps=5,
+        n_sgd_steps=5,
     )
 
     # Stream deliberately extreme cases that would produce large gradients

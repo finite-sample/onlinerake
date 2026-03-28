@@ -15,6 +15,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from ._utils import validate_non_negative, validate_positive
+
 
 class LearningRateSchedule(ABC):
     """Abstract base class for learning rate schedules."""
@@ -42,12 +44,11 @@ class ConstantLR(LearningRateSchedule):
     """
 
     def __init__(self, learning_rate: float = 1.0) -> None:
-        if learning_rate <= 0:
-            raise ValueError("learning_rate must be positive")
+        validate_positive(learning_rate, "learning_rate")
         self._learning_rate = learning_rate
 
-    def __call__(self, t: int) -> float:  # noqa: ARG002
-        del t  # Unused, constant LR
+    def __call__(self, t: int = 0) -> float:
+        _ = t
         return self._learning_rate
 
     def get_params(self) -> dict[str, Any]:
@@ -73,12 +74,9 @@ class InverseTimeDecayLR(LearningRateSchedule):
         decay: float = 0.01,
         min_lr: float = 0.01,
     ) -> None:
-        if initial_lr <= 0:
-            raise ValueError("initial_lr must be positive")
-        if decay < 0:
-            raise ValueError("decay must be non-negative")
-        if min_lr < 0:
-            raise ValueError("min_lr must be non-negative")
+        validate_positive(initial_lr, "initial_lr")
+        validate_non_negative(decay, "decay")
+        validate_non_negative(min_lr, "min_lr")
 
         self._initial_lr = initial_lr
         self._decay = decay
@@ -120,12 +118,10 @@ class PolynomialDecayLR(LearningRateSchedule):
         power: float = 0.6,
         min_lr: float = 0.01,
     ) -> None:
-        if initial_lr <= 0:
-            raise ValueError("initial_lr must be positive")
+        validate_positive(initial_lr, "initial_lr")
         if not (0.5 < power <= 1.0):
             raise ValueError("power must be in (0.5, 1] for Robbins-Monro convergence")
-        if min_lr < 0:
-            raise ValueError("min_lr must be non-negative")
+        validate_non_negative(min_lr, "min_lr")
 
         self._initial_lr = initial_lr
         self._power = power
@@ -172,10 +168,8 @@ class AdaptiveLR(LearningRateSchedule):
         increase_factor: float = 1.05,
         decrease_factor: float = 0.5,
     ) -> None:
-        if initial_lr <= 0:
-            raise ValueError("initial_lr must be positive")
-        if min_lr <= 0:
-            raise ValueError("min_lr must be positive")
+        validate_positive(initial_lr, "initial_lr")
+        validate_positive(min_lr, "min_lr")
         if max_lr <= min_lr:
             raise ValueError("max_lr must exceed min_lr")
         if increase_factor <= 1.0:
@@ -190,8 +184,8 @@ class AdaptiveLR(LearningRateSchedule):
         self._decrease_factor = decrease_factor
         self._last_loss: float | None = None
 
-    def __call__(self, t: int) -> float:  # noqa: ARG002
-        del t  # Unused, adaptive LR ignores step count
+    def __call__(self, t: int = 0) -> float:
+        _ = t
         return self._current_lr
 
     def update(self, current_loss: float) -> None:

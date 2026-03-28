@@ -232,7 +232,7 @@ class OnlineRakingSGD:
             True
         """
         if self._n_obs == 0:
-            return dict.fromkeys(self._feature_names, np.nan)
+            return self._create_nan_margins()
 
         w = self._weights[: self._n_obs]
         total_w = w.sum()
@@ -261,7 +261,7 @@ class OnlineRakingSGD:
             the impact of the raking process.
         """
         if self._n_obs == 0:
-            return dict.fromkeys(self._feature_names, np.nan)
+            return self._create_nan_margins()
 
         # Mean of each feature column
         feature_means = self._features[: self._n_obs].mean(axis=0)
@@ -603,6 +603,50 @@ class OnlineRakingSGD:
         if self.track_convergence and not self._converged:
             self.check_convergence()
 
+    def _create_nan_margins(self) -> dict[str, float]:
+        """Create margins dict with NaN for all features.
+
+        Returns:
+            Dictionary mapping all feature names to NaN.
+        """
+        return dict.fromkeys(self._feature_names, np.nan)
+
+    def _extract_feature_values(self, obs: dict[str, Any] | Any) -> np.ndarray:
+        """Extract feature values from observation in correct order.
+
+        Args:
+            obs: Observation containing feature values. Can be dict or object.
+
+        Returns:
+            Array of feature values in the same order as self._feature_names.
+        """
+        feature_values = np.zeros(self._n_features, dtype=np.float64)
+        for i, name in enumerate(self._feature_names):
+            if isinstance(obs, dict):
+                val = obs.get(name, 0)
+            else:
+                val = getattr(obs, name, 0)
+
+            if self.targets.is_binary(name):
+                feature_values[i] = 1.0 if val else 0.0
+            else:
+                feature_values[i] = float(val)
+
+        return feature_values
+
+    def _log_update(self, prefix: str, gradient_norm: float) -> None:
+        """Log update if verbose mode and every 100 observations.
+
+        Args:
+            prefix: Prefix for the log message (e.g., "Obs" or "MWU Obs").
+            gradient_norm: Current gradient norm to log.
+        """
+        if self.verbose and self._n_obs % 100 == 0:
+            logging.info(
+                f"{prefix} {self._n_obs}: loss={self.loss:.6f}, "
+                f"grad_norm={gradient_norm:.6f}, ess={self.effective_sample_size:.1f}"
+            )
+
     def partial_fit(self, obs: dict[str, Any] | Any) -> None:
         """Process single observation and update weights.
 
@@ -643,19 +687,8 @@ class OnlineRakingSGD:
         # Ensure we have capacity
         self._expand_capacity()
 
-        # Extract feature values in the correct order
-        feature_values = np.zeros(self._n_features, dtype=np.float64)
-        for i, name in enumerate(self._feature_names):
-            if isinstance(obs, dict):
-                val = obs.get(name, 0)
-            else:
-                val = getattr(obs, name, 0)
-
-            # Handle binary vs continuous features
-            if self.targets.is_binary(name):
-                feature_values[i] = 1.0 if val else 0.0
-            else:
-                feature_values[i] = float(val)
+        # Extract feature values using helper
+        feature_values = self._extract_feature_values(obs)
 
         # Store the observation
         self._features[self._n_obs] = feature_values
@@ -686,11 +719,8 @@ class OnlineRakingSGD:
             )
 
             # Verbose output for debugging
-            if self.verbose and self._n_obs % 100 == 0 and step == 0:
-                logging.info(
-                    f"Obs {self._n_obs}: loss={self.loss:.6f}, grad_norm={gradient_norm:.6f}, "
-                    f"ess={self.effective_sample_size:.1f}"
-                )
+            if step == 0:
+                self._log_update("Obs", gradient_norm)
 
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)

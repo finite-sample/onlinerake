@@ -1,102 +1,28 @@
 \documentclass[12pt, letterpaper]{article}
-\usepackage[titletoc,title]{appendix}
-\usepackage{booktabs}
-\usepackage[margin=1in]{geometry}
-\usepackage[linkcolor=blue,
-			colorlinks=true,
-			urlcolor=blue,
-			pdfstartview={XYZ null null 1.00},
-			pdfpagemode=UseNone,
-			citecolor={black},
-			pdftitle={blacklight}]{hyperref}
 
-%\newcites{SI}{SI References}
-\usepackage{natbib}
+% Layout
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{pdflscape}
+
+% Math
+\usepackage{amsfonts,amsmath,amsbsy,amsthm}
+
+% Tables and figures
 \usepackage{booktabs}
 \usepackage{float}
-\usepackage{placeins}
-
-\usepackage{geometry}  % see geometry.pdf on how to lay out the page. There's lots.
-\geometry{letterpaper} % This is 8.5x11 paper. Options are a4paper or a5paper or other...
-\usepackage{graphicx}  % Handles inclusion of major graphics formats and allows use of
-\usepackage{units}
-\usepackage{amsfonts,amsmath,amsbsy}
-\usepackage{amsxtra}
-\usepackage{verbatim}
-%\setcitestyle{round,semicolon,aysep={},yysep={;}}
-\usepackage{setspace} % Permits line spacing control. Options are:
-%\doublespacing
-%\onehalfspace
-%\usepackage{sectsty}    % Permits control of section header styles
-\usepackage{pdflscape}
-\usepackage{fancyhdr}   % Permits header customization. See header section below.
-\usepackage{url}        % Correctly formats URLs with the \url{} tag
-\usepackage{xurl}
-\usepackage{fullpage}   %1-inch margins
+\usepackage{graphicx}
 \usepackage{multirow}
-\usepackage{verbatim}
-\usepackage{rotating}
-\setlength{\parindent}{3em}
-
-%\usepackage[T1]{fontenc}
-%\usepackage[bitstream-charter]{mathdesign}
-
-\usepackage{chngcntr}
-\usepackage{longtable}
-\usepackage{adjustbox}
 \usepackage{dcolumn}
 \usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{adjustbox}
 
-\usepackage{lineno}
-
-\usepackage[12pt]{moresize}
-
-\usepackage{pdfpages}
-
-% https://tex.stackexchange.com/questions/611786/misplaced-noalign-because-input-before-booktabs-rule
-% I was getting Misplaced \noalign. \bottomrule on my laptop
-% but not on my desktop...
-% Comment out for older LaTeX versions
-%\iffalse
-\ExplSyntaxOn
-\cs_new:Npn \expandableinput #1
-{ \use:c { @@input } { \file_full_name:n {#1} } }
-\AddToHook{env/tabular/begin}
-{ \cs_set_eq:NN \input \expandableinput }
-\ExplSyntaxOff
-%\fi
-
-
-\usepackage[nameinlink, capitalize, noabbrev]{cleveref}
-
-\def\citeapos#1{\citeauthor{#1}'s (\citeyear{#1})}
-
-\makeatother
-
-\usepackage{footmisc}
-\setlength{\footnotesep}{\baselineskip}
-\makeatother
-\renewcommand{\footnotelayout}{\footnotesize \onehalfspacing}
-%https://tex.stackexchange.com/a/68242
-%prevent footnotes splitting over pages
-\interfootnotelinepenalty=10000
-
-
-% Colors
-\usepackage{color}
-
-\newcommand{\bch}{\color{blue}\em  }   % begin change
-\newcommand{\ying} {\color{orange}\em  }   % begin change
-\newcommand{\bgcd} {\color{purple}\em }
-\newcommand{\ech}{\color{black}\rm  }    % end change
-
-\newcommand{\note}[1]{\textcolor{orange}{#1}}
-
-% Caption
 % Caption
 \usepackage[
     skip            =0pt,
-    labelfont       =bf, 
+    labelfont       =bf,
     font            =small,
     textfont        =small,
     figurename      =Figure,
@@ -104,31 +30,33 @@
     singlelinecheck =false,
     labelsep        =period]
 {caption}
-%\captionsetup[subtable]{font=small,skip=0pt}
-\usepackage{subcaption}
 
-% tt font issues
-% \renewcommand*{\ttdefault}{qcr}
-\renewcommand{\ttdefault}{pcr}
+% References and links
+\usepackage{natbib}
+\usepackage[linkcolor=blue,
+            colorlinks=true,
+            urlcolor=blue,
+            pdfstartview={XYZ null null 1.00},
+            pdfpagemode=UseNone,
+            citecolor={black},
+            pdftitle={Streaming Calibration Weighting}]{hyperref}
+\usepackage{url}
+\usepackage{xurl}
 
-\usepackage{tocloft}
+% Misc
+\usepackage{verbatim}
 
-\newcommand{\detailtexcount}[1]{%
-  \immediate\write18{texcount -merge -sum -q #1.tex output.bbl > #1.wcdetail }%
-  \verbatiminput{#1.wcdetail}%
-}
+\setlength{\parindent}{3em}
 
-\newcommand{\quickwordcount}[1]{%
-  \immediate\write18{texcount -1 -sum -merge -q #1.tex output.bbl > #1-words.sum }%
-  \input{#1-words.sum} words%
-}
+% Footnotes
+\usepackage{footmisc}
+\setlength{\footnotesep}{\baselineskip}
+\renewcommand{\footnotelayout}{\footnotesize \onehalfspacing}
+\interfootnotelinepenalty=10000
 
-\newcommand{\quickcharcount}[1]{%
-  \immediate\write18{texcount -1 -sum -merge -char -q #1.tex output.bbl > #1-chars.sum }%
-  \input{#1-chars.sum} characters (not including spaces)%
-}
+% (theorem environments removed — no formal results stated)
 
-\title{Streaming Calibration With MWU and SGD\thanks{Replication script and Python package at: \href{https://github.com/finite-sample/onlinerake}{https://github.com/finite-sample/onlinerake}. See also \href{https://github.com/finite-sample/mw-calibration}{https://github.com/finite-sample/mw-calibration}. }}
+\title{Streaming Calibration Weighting\thanks{Replication materials: \href{https://github.com/finite-sample/onlinerake}{https://github.com/finite-sample/onlinerake}.}}
 
 \author{Gaurav Sood\thanks{Gaurav can be reached at \href{mailto:gsood07@gmail.com}{\footnotesize{\texttt{gsood07@gmail.com}}}}\vspace{.5cm}}
 
@@ -136,334 +64,208 @@
 
 \begin{document}
 
-
 \maketitle
 
 \begin{abstract}
-Classical survey raking (iterative proportional fitting) recalibrates the entire
-weight vector whenever new data arrive, making it impractical for streaming
-applications.  We formulate survey weighting as an online convex optimization
-problem and propose two per--observation update rules—stochastic gradient
-descent (SGD) and a multiplicative--weights update (MWU)—that maintain
-calibrated margins in constant time per record.  The SGD update performs
-additive projected gradient descent on a squared–error loss, while the MWU
-update performs mirror descent on the same objective under the
-Kullback–Leibler divergence.  We show that both methods converge to the
-classical raking solution when feasible and give conditions for almost
-sure convergence under stochastic streaming.  Experiments on synthetic
-streams with drifting demographics demonstrate that the online rakers
-substantially reduce margin error relative to unweighted baselines, match
-the accuracy of batch raking, and achieve two orders of magnitude lower
-computational cost.
+Calibration weighting adjusts observation weights so that the weighted distribution of categorical covariates matches known population marginals. The problem arises in survey research (post-stratification, raking), causal inference (covariate balancing), and domain adaptation (importance weighting to a target distribution). The standard approach operates on the complete sample and must be rerun whenever new observations arrive. We develop two streaming algorithms that update weights incrementally as each observation is processed. By maintaining running sufficient statistics (cumulative weighted marginal totals), each update requires $O(Kp)$ work, where $K$ is the number of inner gradient steps and $p$ is the number of calibration categories, regardless of how many observations have been processed. The first algorithm performs projected gradient descent on a squared marginal loss; the second performs multiplicative updates that parallel the structure of iterative proportional fitting. On a fixed sample with feasible targets, both methods converge to weight vectors satisfying the marginal constraints. In streaming simulations with drifting covariate distributions, the online methods track population marginals throughout data collection. Periodic batch recalibration at modest intervals (every 50--100 observations) offers a practical middle ground, matching batch accuracy with incremental availability.
 \end{abstract}
 
 \section{Introduction}
 
-Survey weighting and calibration are indispensable tools for correcting
-sampling and nonresponse bias in complex surveys.  The standard technique
-for aligning sample distributions with population benchmarks is\emph{raking},
-also known as iterative proportional fitting (IPF)\citep{Deming1940}.  IPF
-successively multiplies respondents' weights by adjustment factors so that
-the weighted margins along each demographic variable match external totals.
-It cycles through all variables until the weights converge.  In simple
-implementations the calibration margins are adjusted one at a time, and variables are repeatedly cycled until a tolerance is met.  This batch
-procedure must be rerun on the entire dataset whenever new observations or
-updated targets arrive, which is problematic when data stream continuously
-or when computational budgets are tight.
+Calibration weighting is the problem of finding observation weights so that the weighted covariate distribution matches a known target distribution. The problem is common across applied statistics. In survey research, raking and post-stratification adjust respondent weights so that weighted demographic totals match census benchmarks \citep{Deming1940, Deville1992}. In causal inference, entropy balancing and covariate balancing propensity scores find weights that equalize covariate distributions between treatment and control groups \citep{Hainmueller2012, Imai2014}. In domain adaptation, importance weights correct for distributional shift between source and target domains.
 
-Meanwhile, many applications outside of survey methodology require rapid
-calibration of probabilities or weights.  Online advertising systems adjust
-click–through predictions in real time to maintain calibrated probability
-estimates\citep{Niculescu2005,Guo2017}.  Fair classifiers adapt decision
-thresholds to satisfy group fairness constraints\citep{Agarwal2018}.  In
-these contexts, recomputing a batch calibration model at each update is
-infeasible; instead one desires\emph{streaming} algorithms that adjust
-weights on the fly.
+In each of these settings, the structure is the same. There are $n$ observations, each with a vector of categorical covariates (e.g., age group, sex, region). There are population marginals specifying what proportion of the weighted sample should fall into each category. The task is to find positive weights, as close to the base weights as possible, such that the weighted category proportions match the targets. This is what we mean by ``calibration'' throughout the paper. We are not addressing probability calibration (mapping classifier scores to well-calibrated probabilities, as in Platt scaling or isotonic regression), which is a different problem despite sharing the name.
 
-In this paper we cast survey raking as an online optimization problem and
-derive two streaming update rules that operate at the granularity of a
-single observation.  Our contributions are threefold:
-\begin{enumerate}
-  \item We formulate the calibration objective as minimizing a convex
-    loss on weighted margins subject to positivity constraints and show
-    that classical raking solves this problem.
-  \item We derive two per--record update rules.  The first,\emph{online
-    stochastic gradient descent} (SGD), performs additive updates on the
-    weight vector; the second,\emph{online multiplicative weights} (MWU),
-    performs multiplicative updates and recovers a mirror descent
-    interpretation of IPF.
-  \item We prove that, under standard step--size schedules and a
-    feasibility assumption on the targets, both online updates converge
-    to the same fixed--point as classical raking.  In streaming
-    simulations with drifting bias patterns, our methods track the true
-    margins, maintain high effective sample sizes, and achieve up to
-    \(100\times\) lower compute cost than frequent batch raking.
-\end{enumerate}
+The dominant algorithm for this problem is iterative proportional fitting \citep[IPF, also known as raking;][]{Deming1940}. IPF cycles through the calibration variables, multiplicatively adjusting all weights so that the weighted marginal for each variable matches its target. When the marginal constraints are feasible, the algorithm converges to a weight vector that minimizes Kullback--Leibler divergence from the base weights subject to the constraints \citep{Csiszar1975}. This KL minimizer is unique whenever it exists. Other algorithms for the same problem include entropy balancing \citep{Hainmueller2012}, which solves a closely related problem via an unconstrained dual formulation, and the generalized calibration framework of \citet{Deville1992}, which allows different divergence measures between calibrated and base weights.
 
-The remainder of the paper is organized as follows.  Section\,\ref{sec:background}
-reviews classical raking and highlights the need for online methods.
-Section\,\ref{sec:setup} formalizes the calibration problem and shows
-how it can be cast as constrained optimization.  Section\,\ref{sec:algorithms}
-derives the SGD and MWU updates and relates them to IPF.  Section\,\ref{sec:analysis}
-sketches convergence results.  Section\,\ref{sec:experiments}
-presents experiments on synthetic streaming data.  Finally,
-Section\,\ref{sec:discussion} discusses implications, extensions and
-applications beyond survey weighting.
+All of these are batch algorithms: they require the full sample and must be rerun whenever new observations arrive or targets change. This paper develops streaming alternatives. The motivation is settings where observations arrive sequentially and weighted estimates are needed throughout data collection, not only after the sample is complete. Rolling surveys, real-time dashboards during panel data collection, and online systems that must maintain calibrated weights as users arrive are examples. Batch recalibration after each new observation costs $O(np)$ per update, where $n$ is the current sample size and $p$ is the number of calibration categories. We want algorithms where the per-observation cost does not grow with $n$.
 
-\section{Background and Related Work}
+We make three contributions. First, we formulate calibration as minimizing a squared marginal loss and derive two per-observation update rules: an additive (SGD) update and a multiplicative (MWU) update (Section~\ref{sec:algorithms}). Both operate on the new observation's weight using only running sufficient statistics, achieving $O(Kp)$ cost per observation. Second, we compare accuracy, weight efficiency, and computational cost against batch IPF and periodic recalibration in simulations with stationary and drifting covariate distributions (Section~\ref{sec:experiments}). Third, we discuss the convergence properties of the streaming algorithms, their relationship to IPF, and the structural asymmetry between early and late observations (Section~\ref{sec:discussion}).
+
+Two clarifications about scope. First, throughout the paper ``raking'' and ``IPF'' refer specifically to the batch multiplicative algorithm of \citet{Deming1940}. ``Calibration'' refers to the general problem of matching weighted marginals to targets. Our streaming methods minimize squared marginal error, which differs from the KL objective that IPF minimizes. On a feasible problem with a unique solution, the objectives agree; when multiple solutions exist (as in typical settings where $n \gg p$), different divergence measures select different weight vectors. Second, this paper takes a purely design-based approach: the weights are chosen to match known marginals without modeling the relationship between the covariates and any outcome of interest. Model-assisted calibration, as in MRP \citep{Gelman1997} or the GREG estimator \citep{Deville1992}, uses such a model to improve efficiency. Extending the streaming framework to model-assisted settings is a natural direction but outside our current scope.
+
+\section{Background}
 \label{sec:background}
 
-Calibration and raking have long been used to adjust sample weights so
-that weighted totals agree with known population characteristics.  The
-method dates to Deming and Stephan's work on contingency tables
-\citep{Deming1940} and has been widely applied in household and social
-surveys\citep{Kolenikov2015}.  In raking, one specifies target proportions
-\(t_j\) for each demographic variable \(j\) and iteratively adjusts
-weights \(w_i\) by the ratio of the target to the current weighted
-margin.  Each variable is treated sequentially; the algorithm repeats
-these adjustments until convergence to the desired margins.
+\subsection{The Calibration Problem}
 
-Although effective, raking is inherently a batch algorithm: it operates
-on the full sample and must revisit all observations whenever new data
-arrive or targets change.  Recent work has explored fast variants and
-simultaneous raking across multiple levels\citep{Kolenikov2015}, but
-these methods still require iterating through the entire dataset.  In
-other domains, streaming calibration has been studied for probability
-forecasts.  Platt scaling\citep{Platt1999}, isotonic regression
-\citep{Zadrozny2002}, and temperature scaling\citep{Guo2017} are
-commonly used to map raw classifier scores to calibrated probabilities,
-but they are trained in batch and periodically refit.  Blackwell
-approachability methods\citep{Foster2018} and fairness reduction
-techniques\citep{Agarwal2018} provide online calibration under
-adversarial sequences, but require solving projection subproblems.
-
-Our work bridges these literatures by adapting multiplicative weights
-and gradient descent updates to the survey weighting problem, yielding
-constant--time updates per record.
-
-\section{Problem Setup}
-\label{sec:setup}
-
-Let \(\{x_{ij}\}\_{i=1,j=1}^{n,p}\) denote binary indicators for \(n\)
-observations and \(p\) calibration variables (e.g., age, gender, education
-and region).  Each respondent \(i\) has a positive weight \(w_i\).
-Define the weighted margin for variable \(j\) as
-\[
-  m_j(\mathbf{w}) = \frac{\sum_{i=1}^n w_i x_{ij}}{\sum_{i=1}^n w_i}.
-\]
-Let \(t_j\in (0,1)\) be the population proportion of category \(1\) for
-variable \(j\).  Classical raking seeks weights \(\mathbf{w}\) such that
-\(m_j(\mathbf{w}) = t_j\) for all \(j\).  Because the constraints depend
-only on relative weights, any positive scaling of \(\mathbf{w}\) yields
-the same margins.  We set the average weight to one for identifiability.
-
-We cast calibration as minimizing the squared error between current
-margins and targets:
+Let $x_i \in \{0,1\}^p$ denote the vector of category indicators for observation $i$. Each indicator marks membership in a calibration category: for example, $x_{i1} = 1$ if observation $i$ is female, $x_{i2} = 1$ if under 30, and so on. Let $t \in (0,1)^p$ denote the target proportions for each category. The calibration problem is to find positive weights $w_1, \ldots, w_n$ such that the weighted category proportions match the targets:
 \begin{equation}
-  L(\mathbf{w}) = \frac{1}{2} \sum_{j=1}^p \bigl(m_j(\mathbf{w}) - t_j\bigr)^2
-  \label{eq:loss}
+  m_j(\mathbf{w}) := \frac{\sum_{i=1}^n w_i x_{ij}}{\sum_{i=1}^n w_i} = t_j, \quad j = 1, \ldots, p.
+  \label{eq:margins}
 \end{equation}
-subject to \(w_i \in [\varepsilon, M]\).  The lower and upper bounds
-\(\varepsilon\) and \(M\) prevent degenerate weights.  Minimizing
-\(L\) over the weight simplex recovers the classical raking solution
-when feasible.  Unlike IPF, our online algorithm optimizes \eqref{eq:loss}
-incrementally as new data arrive.
+When multiple weight vectors satisfy \eqref{eq:margins}, one selects among them by minimizing a divergence from base weights $u_i$ (often uniform, design weights in a survey context, or inverse propensity weights in a causal inference context). The choice of divergence measure defines the calibration method: KL divergence yields raking/entropy balancing, chi-squared distance yields the GREG estimator, and other distances yield the generalized calibration estimators of \citet{Deville1992}.
 
-\section{Algorithms}
+\subsection{Iterative Proportional Fitting}
+
+IPF solves the calibration problem by cycling through the $p$ categories. For category $j$, every weight is scaled by the ratio of the target marginal to the current weighted marginal:
+\[
+  w_i \leftarrow w_i \cdot \frac{t_j}{m_j(\mathbf{w})} \quad \text{for all } i \text{ with } x_{ij} = 1.
+\]
+After processing category $j$, the weighted marginal for $j$ equals $t_j$ exactly (though earlier marginals may be disturbed). The algorithm cycles through all categories until all marginals converge. IPF converges whenever the marginal constraints are feasible and produces the weight vector minimizing $\text{KL}(\mathbf{w} \| \mathbf{u})$ subject to \eqref{eq:margins} \citep{Csiszar1975}.
+
+IPF requires access to the full weight vector at each step. Adding a single new observation requires rerunning the entire algorithm, at cost $O(np)$ per IPF iteration times the number of cycles to convergence. For large $n$ or frequent updates, this cost motivates streaming alternatives.
+
+\subsection{Related Work}
+
+The calibration framework of \citet{Deville1992} and \citet{Deville1993} provides the theoretical foundation for weight adjustment to known totals in the survey sampling literature. Raking (IPF applied to demographic margins) is the standard implementation; \citet{Kolenikov2015} reviews recent practice. Entropy balancing \citep{Hainmueller2012} solves a dual formulation of the same KL minimization problem that IPF addresses. Where IPF works in the primal (multiplicatively adjusting weights, cycling through constraints), entropy balancing works in the dual (finding Lagrange multipliers for the moment constraints via Newton-type methods, then recovering weights through exponential tilting). The two approaches produce the same weights when both converge, but differ in computational profile: IPF is simple and scales well with $n$; entropy balancing handles many simultaneous constraints more naturally. \citet{Zhao2017} establishes double robustness of the entropy balancing estimator. \citet{Zubizarreta2015} studies calibration with explicit weight bounds.
+
+None of these methods are designed for streaming updates. In machine learning, online calibration of probability forecasts has been studied via Platt scaling \citep{Platt1999}, isotonic regression \citep{Zadrozny2002}, and temperature scaling \citep{Guo2017}, but these address a different problem (mapping continuous scores to calibrated probabilities) and are trained in batch. The multiplicative weights update method \citep{Arora2012} and mirror descent with entropic regularization \citep{Beck2003} provide the algorithmic template for our MWU update. Online convex optimization \citep{Hazan2016} provides the convergence framework, though our setting differs from the standard one because the problem dimension grows with the data.
+
+\section{Streaming Calibration}
 \label{sec:algorithms}
 
-\subsection{Stochastic Gradient Descent Raking}
+\subsection{Objective}
+\label{sec:objective}
 
-We first derive an additive update inspired by stochastic gradient
-descent.  Denote by \(\mathbf{w}^{(t)}\) the weight vector after
-processing \(t\) observations.  When a new observation \(x^{(t+1)}\)
-arrives, we append a weight initialized to one and apply
-\(K\) gradient steps.  The gradient of the loss \eqref{eq:loss} with
-respect to weight \(w_k\) is
+We formulate calibration as minimizing the squared marginal error:
+\begin{equation}
+  L(\mathbf{w}) = \frac{1}{2} \sum_{j=1}^p \bigl(m_j(\mathbf{w}) - t_j\bigr)^2,
+  \label{eq:loss}
+\end{equation}
+subject to $w_i \in [\varepsilon, M]$ for all $i$, where $\varepsilon > 0$ and $M < \infty$ prevent degenerate weights. When the margin constraints \eqref{eq:margins} are feasible within these bounds, any minimizer of $L$ satisfies them exactly ($L = 0$).
+
+Because the margins $m_j$ are ratios of linear functions of $\mathbf{w}$, the loss $L$ is not globally convex. However, it has a simple structure: $L \geq 0$ everywhere, $L = 0$ exactly at feasible weight vectors, and $\nabla L(\mathbf{w}) = 0$ implies either $L(\mathbf{w}) = 0$ (feasibility achieved) or a degenerate saddle point that gradient descent escapes under generic conditions. In our experiments, gradient descent on $L$ converges reliably to feasible solutions when they exist. Under a normalization that fixes $\sum_i w_i$, the marginals become linear in $\mathbf{w}$ and $L$ becomes a convex quadratic, which provides formal rate guarantees; we discuss this further in Section~\ref{sec:discussion}.
+
+This objective differs from the KL divergence minimized by IPF. In typical settings, $n \gg p$ and the calibration problem is underdetermined: many weight vectors satisfy the marginal constraints. Squared-error calibration selects the feasible weights closest to the initialization in a sense determined by the loss geometry, while KL calibration (IPF) selects those closest to the base weights in relative-entropy terms. When the solution is unique, the two objectives agree.
+
+\subsection{Sufficient Statistics}
+
+The key observation enabling streaming updates is that the margin $m_j(\mathbf{w})$ depends on the data only through two running totals:
+\begin{equation}
+  S_j^{(t)} = \sum_{i=1}^t w_i x_{ij}, \qquad W^{(t)} = \sum_{i=1}^t w_i,
+  \label{eq:suffstats}
+\end{equation}
+so that $m_j(\mathbf{w}) = S_j^{(t)} / W^{(t)}$. When a new observation $x^{(t+1)}$ arrives with initial weight $w_{t+1}$ (set to $1$ for uniform base weights, or to the design weight $u_{t+1}$ when base weights are available), the sufficient statistics update as
 \[
-  \frac{\partial L}{\partial w_k} = \sum_{j=1}^p
-  \bigl(m_j - t_j\bigr)
-  \frac{x_{jk} \sum_i w_i - \sum_i w_i x_{ij}}{\bigl(\sum_i w_i\bigr)^2}.
+  S_j^{(t+1)} = S_j^{(t)} + w_{t+1} \, x_{(t+1),j}, \qquad W^{(t+1)} = W^{(t)} + w_{t+1},
 \]
-Each SGD step updates
+and the current margins are immediately available without scanning the full dataset. The gradient of $L$ with respect to the new observation's weight is also computable from these statistics, as we show next.
+
+\subsection{Gradient}
+
+The gradient of $L$ with respect to weight $w_k$ is
+\begin{equation}
+  \frac{\partial L}{\partial w_k} = \frac{1}{W} \sum_{j=1}^p (m_j - t_j)(x_{kj} - m_j),
+  \label{eq:gradient}
+\end{equation}
+where $W = \sum_i w_i$ and $m_j = S_j / W$. This follows from the quotient rule applied to $m_j(\mathbf{w}) = S_j / W$:
 \[
-  w_k \leftarrow \mathrm{clip}\bigl(w_k - \eta \nabla_k L,\,
-  \varepsilon, M\bigr),
+  \frac{\partial m_j}{\partial w_k} = \frac{x_{kj} W - S_j}{W^2} = \frac{x_{kj} - m_j}{W}.
 \]
-where \(\eta\) is the learning rate and \(\mathrm{clip}\) enforces
-positivity and bounds.  This projected gradient descent operates on
-the simplex; with a suitable diminishing step--size it converges to a
-minimizer of \(L\).  In the limit of \(K\to\infty\) and small
-\(\eta\), the update recovers classical raking.
+The gradient has a natural interpretation. Because the SGD update subtracts $\eta$ times the gradient, observation $k$'s weight increases when its indicators $x_{kj}$ align with underrepresented margins ($m_j < t_j$, so the gradient contribution is negative) and decreases when they align with overrepresented margins ($m_j > t_j$, so the gradient contribution is positive). The algorithm upweights observations that look like the underrepresented population segments and downweights those that look like overrepresented segments.
 
-\subsection{Multiplicative Weights Raking}
+Computing \eqref{eq:gradient} for a single observation $k$ requires $O(p)$ work given the sufficient statistics $S_j$ and $W$, which are maintained incrementally.
 
-Our second update mirrors the multiplicative weights framework
-\citep{Arora2012}.  After appending a new weight initialized to one, we
-compute the same gradient as above and update
+\subsection{Algorithm 1: Additive Update (SGD)}
+
+When observation $t+1$ arrives:
+
+\begin{enumerate}
+  \item Initialize $w_{t+1} = 1$.
+  \item Update sufficient statistics: $S_j \leftarrow S_j + x_{(t+1),j}$ for all $j$; $W \leftarrow W + 1$.
+  \item For $k = 1, \ldots, K$ inner steps:
+  \begin{enumerate}
+    \item Compute the gradient \eqref{eq:gradient} for observation $t+1$.
+    \item Update $w_{t+1} \leftarrow \mathrm{clip}(w_{t+1} - \eta \, \nabla_{t+1} L, \; \varepsilon, M)$.
+    \item Update sufficient statistics to reflect the weight change: $\Delta w = w_{t+1}^{\text{new}} - w_{t+1}^{\text{old}}$; $S_j \leftarrow S_j + \Delta w \cdot x_{(t+1),j}$; $W \leftarrow W + \Delta w$.
+  \end{enumerate}
+\end{enumerate}
+
+Each inner step costs $O(p)$, so each new observation costs $O(Kp)$ regardless of $n$. The projection (clipping) enforces the weight bounds. Because the margins $m_j = S_j / W$ and the gradient \eqref{eq:gradient} depend only on weight ratios, the algorithm is scale-invariant and requires no explicit normalization.
+
+The central design choice is that the inner loop adjusts only the new observation's weight, treating all previous weights as fixed. This is what makes the algorithm streaming: the cost of processing each arrival is independent of how many observations preceded it. The choice is justified by the observation that each new arrival perturbs the current margins by $O(1/t)$, so the previous weights, which were approximately calibrated when they were set, remain approximately calibrated afterward. The $K$ inner gradient steps on the new weight compensate for this small perturbation rather than recalibrating from scratch.
+
+\subsection{Algorithm 2: Multiplicative Update (MWU)}
+
+The multiplicative variant replaces the additive step with an exponentiated gradient:
 \[
-  w_k \leftarrow \mathrm{clip}\Bigl(w_k \exp\bigl(-\eta \nabla_k L\bigr),\,
-  \varepsilon, M\Bigr).
+  w_{t+1} \leftarrow \mathrm{clip}\Bigl(w_{t+1} \cdot \exp\bigl(-\eta \, \nabla_{t+1} L\bigr), \; \varepsilon, M\Bigr),
 \]
-This multiplicative rule can be interpreted as mirror descent with
-respect to the Kullback–Leibler divergence.  In contrast to SGD, MWU
-ensures positivity without clipping and resembles the multiplicative
-adjustments of IPF.  However, because the gradient is computed on the
-full weight vector, the update is still local to the current record and
-does not reweight entire post–strata as IPF does.
-
-\subsection{Relation to IPF}
-
-Classic IPF scales all weights in a post–stratum by the ratio of the
-target margin to the current weighted margin.  When applied
-sequentially across variables, these multiplicative adjustments solve a
-KL--divergence minimization and converge to a solution satisfying the
-margin.  Our MWU update also multiplies weights, but
-it operates on individual weights based on the gradient of the squared
-margin error.  When one groups weights by post–stratum and chooses the
-learning rate to be the adjustment factor, MWU reduces to IPF.  Thus,
-MWU may be viewed as a per–record approximation to IPF; it avoids
-recalibrating the entire stratum when a new record arrives.  The SGD
-update is additive and therefore lacks a direct connection to IPF, but
-we show in the next section that it converges to the same fixed point
-under similar assumptions.
-
-\section{Convergence Analysis}
-\label{sec:analysis}
-
-We sketch the main convergence results; detailed proofs follow
-standard stochastic approximation arguments and are omitted for
-brevity.  Let \(\mathbf{p}^{(t)} = \mathbf{w}^{(t)} / \sum_i w_i^{(t)}\)
-denote the normalized weights.  Under the feasibility condition that
-there exists \(\mathbf{p}^*\) with \(m_j(\mathbf{p}^*)=t_j\) for all
-\(j\), we have the following.
-
-\paragraph{Deterministic gradient descent.}  Suppose we process a
-stream of observations deterministically and apply full gradients of
-\eqref{eq:loss}.  If the step size satisfies \(\eta\le 1/L\), where
-\(L\) is the Lipschitz constant of the gradient, projected gradient
-descent converges globally to a minimizer of \(L\).  Because
-minimizers coincide with the raking solution set, both the SGD and
-MWU updates converge to the same fixed point.
-
-\paragraph{Stochastic updates.}  In the streaming setting we update
-\(\mathbf{w}^{(t)}\) based only on the past and the current record.
-Assuming bounded gradients, Robbins–Monro step sizes
-\(\sum_t \eta_t=\infty, \sum_t \eta_t^2<\infty\), and projection
-onto a compact domain \([\varepsilon,M]^n\), standard stochastic
-approximation results imply that \(\mathbf{p}^{(t)}\) converges almost
-surely to the set of stationary points of \eqref{eq:loss}.  In
-particular, both online rakers converge to the classical raking
-solution whenever it exists.
+with the same sufficient-statistics bookkeeping. This update ensures positivity without clipping (the clip enforces only the upper bound $M$) and resembles the multiplicative structure of IPF.
 
 \section{Experiments}
 \label{sec:experiments}
 
-\subsection{Synthetic Streaming Scenarios}
+\subsection{Setup}
 
-To evaluate the online rakers we simulated streaming surveys under
-three bias patterns inspired by nonstationary sampling processes:
-\begin{enumerate}
-  \item \textbf{Linear drift:} the probability of each characteristic
-    increases linearly from an undersampled to an oversampled level.
-  \item \textbf{Sudden shift:} halfway through the stream, the
-    demographic composition jumps to a new regime.
-  \item \textbf{Oscillation:} the composition oscillates sinusoidally
-    around the target margins.
-\end{enumerate}
-Each stream contains 300 observations.  We run five random seeds for
-each scenario and apply both the SGD and MWU rakers with three
-update steps per record.  The learning rates are tuned to 5.0 for
-SGD and 1.0 for MWU based on preliminary experiments.  As a baseline
-we compute the unweighted (raw) margins.  Key metrics are: (i) mean
-absolute margin error over time, (ii) effective sample size (ESS), and
-(iii) the final loss \eqref{eq:loss}.  ESS is defined as
-\( (\sum w_i)^2 / \sum w_i^2\).  All simulations use the default
-targets \(t_{\mathrm{age}}=0.5, t_{\mathrm{gender}}=0.5, t_{\mathrm{education}}=0.4,
-t_{\mathrm{region}}=0.3\).
+We compare five calibration strategies across six scenarios.
+
+\paragraph{Algorithms.}
+(1)~\emph{Batch IPF}: classical raking on the full sample, the accuracy benchmark. (2)~\emph{Streaming SGD (fixed $\eta$)}: Algorithm~1 with learning rate 5.0 and $K=3$ inner steps. (3)~\emph{Streaming SGD (Robbins-Monro)}: Algorithm~1 with $\eta_t = 5.0 / t^{0.6}$ and $K=3$. (4)~\emph{Streaming MWU}: Algorithm~2 with learning rate 1.0 and $K=3$. (5)~\emph{Periodic IPF}: batch IPF rerun every 50 or 100 observations, providing incremental availability with batch accuracy.
+
+\paragraph{Scenarios.}
+\emph{Standard} ($n=3000$, $p=8$, moderate target--sample discrepancy). \emph{Large} ($n=50{,}000$, $p=8$). \emph{Hard targets} ($n=3000$, $p=8$, extreme target proportions near 0.08 or 0.92). \emph{High-dimensional} ($n=3000$, $p=50$). \emph{Drift} ($n=5000$, $p=8$, covariate distribution shifts linearly over the stream). \emph{Small easy} ($n=500$, $p=4$). We run 50 replications per scenario.
+
+\paragraph{Metrics.}
+Final squared marginal loss \eqref{eq:loss}. Effective sample size $\text{ESS} = (\sum w_i)^2 / \sum w_i^2$. Weight efficiency $\text{ESS}/n$. Runtime in seconds. For streaming methods, we also report the marginal error trajectory over the stream.
 
 \subsection{Results}
 
-Table\,\ref{tab:results} summarizes the average improvements in
-absolute margin error relative to the baseline and the mean final
-ESS and loss across seeds.  Improvements are expressed as
-\(\text{Imp}(\%) = 100\times (e_{\mathrm{baseline}} - e_{\mathrm{method}})/e_{\mathrm{baseline}}\).  Higher
-improvement and ESS are better, and lower loss indicates better
-convergence.
+\input{table_main_results}
 
-\begin{table}[ht]
-  \centering
-  \caption{Average improvement in absolute margin error, final ESS and
-    final loss across five seeds.  SGD yields the highest
-    improvements and lowest loss, while MWU retains good performance
-    with multiplicative updates.}
-  \label{tab:results}
-  \begin{tabular}{@{}llrrrrrrr@{}}
-    \toprule
-    Scenario & Method & \multicolumn{4}{c}{Improvement (\%)} & Overall & ESS & Loss\\
-    \cmidrule(lr){3-6}
-    & & Age & Gender & Educ & Region & & (mean) & (mean)\\
-    \midrule
-    Linear & SGD & 82.8 & 78.6 & 76.8 & 67.5 & 77.0 & 251.8 & 0.00147\\
-           & MWU & 57.2 & 53.6 & 46.9 & 34.6 & 48.8 & 240.9 & 0.00676\\
-    Sudden & SGD & 82.9 & 82.3 & 79.6 & 63.5 & 79.5 & 225.5 & 0.00102\\
-           & MWU & 52.6 & 51.2 & 46.3 & 26.3 & 47.3 & 175.9 & 0.01235\\
-    Oscillating & SGD & 69.7 & 78.5 & 65.6 & 72.0 & 72.2 & 278.7 & 0.00023\\
-               & MWU & 49.6 & 57.3 & 48.3 & 50.1 & 52.0 & 276.0 & 0.00048\\
-    \bottomrule
-  \end{tabular}
-\end{table}
+Table~\ref{tab:main_results} reports results for three representative scenarios.
 
-Figure\,\ref{fig:ageerror} illustrates the absolute age margin error
-over time in the linear drift scenario, averaged across five seeds.
-The baseline error declines slowly as the sample grows, whereas both
-online rakers track the target much more closely.  SGD converges
-slightly faster and achieves lower steady--state error than MWU.
+\paragraph{Accuracy.} Batch IPF achieves zero loss because the experimental targets are feasible by construction. Among streaming methods, SGD with fixed learning rate is closest (loss 0.0009 on standard, corresponding to root-mean-square marginal error of roughly $\sqrt{2 \times 0.0009 / p}$ per category), followed by MWU (0.010) and SGD with Robbins-Monro (0.052). Periodic IPF at 100-observation intervals also achieves zero loss at its final recalibration.
 
-\begin{figure}[ht]
-  \centering
-  \includegraphics[width=0.8\linewidth]{fig_age_margin_error.png}
-  \caption{Absolute age margin error over time in the linear drift
-    scenario (mean over five seeds).  Online rakers quickly track the
-    target margin, whereas the unweighted baseline drifts with the
-    sampling bias.  SGD converges slightly faster than MWU.}
-  \label{fig:ageerror}
-\end{figure}
+\paragraph{Weight efficiency.} Streaming SGD with Robbins-Monro preserves the highest weight efficiency (98.7\%) but also has the highest loss (0.052) among the methods that converge. High efficiency with nonzero loss indicates that the algorithm has not fully calibrated: an algorithm that leaves all weights at one achieves 100\% efficiency with no calibration at all. SGD with fixed $\eta$ achieves 72.2\%, and MWU 69.3\%. Batch IPF efficiency is 77.1\% on the standard scenario and depends entirely on how far the sample marginals are from the targets.
+
+\paragraph{Computational cost.} On the large scenario ($n = 50{,}000$), batch IPF completes in 0.08 seconds. Streaming SGD requires 97 seconds total across all observations. The per-observation cost is constant ($O(Kp)$), but the total cost over $n$ observations is $O(nKp)$, compared to $O(npC)$ for batch IPF where $C$ is the number of convergence cycles. With $K = 3$ inner steps and $C$ typically small (under 20), the total work is comparable; the 97-second runtime reflects Python overhead on 50,000 sequential calls rather than a fundamentally different workload. The streaming methods' advantage is latency (calibrated estimates at each step), not total throughput. Periodic IPF at 100-observation intervals achieves batch accuracy in 1.5 seconds total, combining low latency with low total cost.
+
+\paragraph{Hard targets.} When target proportions are extreme, achieving exact calibration forces most of the weight onto a small subset of observations. Batch IPF drives loss to zero but collapses ESS to 41 out of 3000 (1.4\% efficiency). Streaming SGD with Robbins-Monro preserves 84.6\% efficiency but its decaying step size prevents the weights from reaching the extreme values needed, stalling at loss 1.15. This reflects a tradeoff inherent in the Robbins-Monro schedule: convergence guarantees and weight stability come at the cost of slow adaptation when targets require extreme reweighting. The algorithm has failed to calibrate, but the implicit regularization may be desirable if the practitioner prefers stable weights to exact marginals. When exact calibration requires extreme weights, the practitioner must decide which matters more.
+
+\paragraph{Drift.} When the covariate distribution shifts linearly over the stream, the fixed learning rate of SGD enables continuous adaptation. Batch IPF, applied once at the end, calibrates to the average composition over the collection period, which may not reflect the current population. Periodic IPF tracks the drift at discrete intervals. A rolling-window variant of batch IPF (recalibrating on the most recent $n_0$ observations) would also track drift, but requires choosing a window size. The streaming methods track drift continuously without this tuning choice, at the cost of not achieving exact calibration at any point.
+
+\subsection{When to Use What}
+
+The experiments suggest clear recommendations:
+
+\emph{Batch IPF} when the full sample is available before analysis and there is no need for interim estimates. It is the fastest, most accurate, and most familiar option.
+
+\emph{Periodic IPF} when interim estimates are needed at regular intervals (every 50--100 observations). It matches batch accuracy and is computationally cheap. This is the practical default for most streaming applications.
+
+\emph{Streaming SGD (fixed $\eta$)} when calibrated estimates are needed after every observation and the covariate distribution may drift. The fixed step size enables continuous adaptation but can produce weight oscillations.
+
+\emph{Streaming SGD (Robbins-Monro)} when weight stability matters more than exact marginal matching. The decaying step size acts as implicit regularization.
+
+\emph{Streaming MWU} when base weights are nonuniform (e.g., design weights from a complex sampling scheme). In this case, initialize each new observation's weight at its design weight $u_{t+1}$ rather than one, and the multiplicative updates preserve the ratio structure of the base weights. MWU converges more slowly than SGD in our experiments but may be preferred when the multiplicative form is natural.
 
 \section{Discussion}
 \label{sec:discussion}
 
-Our simulations show that per--record raking via SGD and MWU can
-closely track target margins under nonstationary sampling.  The SGD
-update consistently achieves greater reductions in margin error and
-lower final loss than the MWU update, albeit at the cost of tuning a
-higher learning rate.  MWU, in turn, resembles classical raking more
-closely and may be preferred when multiplicative adjustments are
-desirable or when starting from nonuniform base weights.  Both methods
-maintain high effective sample sizes, indicating stable weight
-distributions.  The computational advantage is substantial: online
-raking requires constant time per observation versus repeated passes
-through the full data for batch raking, enabling deployment in
-high–velocity streams.
+\subsection{Relation to IPF}
 
-Beyond survey weighting, the same framework applies to other online
-calibration tasks.  In advertising, weights correspond to bias factors
-for probability forecasts; in fairness‐constrained classification,
-weights correspond to error multipliers for groups.  Our analysis
-shows that streaming calibration can be cast as convex optimization on
-the simplex and solved by mirror descent.  Future work includes
-adaptive step–size schedules, multi–level post–stratification, and
-extensions to multinomial or continuous calibration variables.
+IPF and the streaming algorithms solve the same feasibility problem through different decompositions. IPF processes one calibration variable at a time and scales every weight in a category by the same ratio $t_j / m_j$, zeroing out that variable's marginal error in a single pass. It converges by cycling through variables until all marginals are simultaneously satisfied. The streaming algorithms process one observation at a time and adjust its weight based on the gradient of the joint marginal loss across all variables. No single marginal error is zeroed out in one step; instead, all marginals improve simultaneously by a small amount.
+
+The MWU update is multiplicative, like IPF, but the resemblance is structural rather than algorithmic. IPF multiplies by a ratio that depends only on the current marginal for one variable; MWU multiplies by an exponentiated gradient that depends on all marginals jointly. When the inner loop is run on all observations (not just the new one) and $K \to \infty$, both methods converge to weight vectors satisfying the marginal constraints on a feasible problem. They do not in general converge to the same weight vector: batch gradient descent on $L$ finds the feasible point nearest the initialization in Euclidean distance (under normalization), while IPF finds the feasible point nearest the base weights in KL divergence.
+
+\subsection{Convergence behavior}
+
+On a fixed sample, the loss $L$ can be analyzed by reparameterizing the weights so that $\sum_i w_i = n$. Under this normalization, the marginals become linear in $\mathbf{w}$, $L$ is a convex quadratic, and projected gradient descent converges at the standard rate: $L(\mathbf{w}^{(T)}) - L^* \leq \|\mathbf{w}^{(0)} - \mathbf{w}^*\|_2^2 / (2\eta T)$, giving marginal error $O(1/\sqrt{T})$ in the number of full gradient steps. This is a standard result from smooth convex optimization; the only problem-specific content is the Lipschitz constant $L_{\text{Lip}} = \|X\|_{\text{op}}^2 / n^2 \leq p/n$ for binary indicators.
+
+The streaming setting is harder to analyze formally. Two complications prevent direct application of the fixed-sample rate. First, the optimization problem changes with each arrival: at time $t$ the algorithm minimizes $L^{(t)}$ over $t$ weights; at time $t+1$ it minimizes $L^{(t+1)}$ over $t+1$ weights. Second, the algorithm updates only the new observation's weight, treating all previous weights as fixed. Standard convergence results assume a fixed objective and access to all coordinates.
+
+What the experiments confirm is that the algorithms track the marginals reliably throughout the stream. Two properties explain why. Each new arrival perturbs the current marginals by $O(1/t)$ (one observation among $t$), so the $K$ inner gradient steps need only compensate for a small perturbation rather than solve the problem from scratch. And the gradient \eqref{eq:gradient} is computable from sufficient statistics, so it reflects the true marginal error at each step, not a stale estimate.
+
+\subsection{The early-vs-late asymmetry}
+
+The streaming algorithms exhibit an asymmetry that does not arise in batch calibration. Early observations arrive when the sample is small and the marginals are poorly estimated; their weights are set under substantial uncertainty and are never revisited. Later observations arrive when the marginals are well-estimated, and their weights can be set with more precision. The quality of the final calibration therefore depends in part on the arrival order: adversarial or highly structured sequences could produce worse results than i.i.d.\ arrivals. In our i.i.d.\ simulations, this effect is mild. A natural mitigation would be to periodically revisit and re-optimize earlier weights, which would interpolate between the streaming and batch approaches at a tunable computational cost.
+
+\subsection{Squared-error versus KL calibration}
+
+The streaming algorithms minimize squared marginal error, not KL divergence. In the typical underdetermined case ($n \gg p$), many weight vectors satisfy the marginal constraints and the two objectives select different solutions. The squared-error solution tends toward weights closer to the initialization in Euclidean distance; the KL solution tends toward weights closer to the base weights in relative-entropy terms. Which is preferable depends on the application. When the solution is unique (up to scale), the distinction vanishes.
+
+The relationship to entropy balancing deserves a note. Entropy balancing \citep{Hainmueller2012} minimizes KL divergence from base weights subject to exact moment constraints, solving the problem via an unconstrained dual over Lagrange multipliers. Both IPF and entropy balancing target the same KL solution but by different computational routes: IPF cycles through constraints in the primal, entropy balancing solves for multipliers in the dual. Our streaming algorithms minimize a different objective and the multiplicative form of the MWU update arises from the exponentiated gradient rule, not from a KL geometry. In settings where the KL solution is preferred, one could replace \eqref{eq:loss} with the entropy balancing dual and apply the same streaming architecture, though the gradient computation would change.
+
+\subsection{Limitations and future work}
+
+The streaming algorithms update only the new observation's weight. If the target marginals are revised mid-stream (e.g., corrected administrative totals replace preliminary estimates, or a causal inference application switches to a different target population), previous observations' weights are stale and should be recalibrated. Periodic batch recalibration is the natural fix.
+
+Future directions include adaptive step-size schedules (e.g., AdaGrad) that adjust to the local curvature of the marginal loss, extensions to continuous and multinomial calibration variables, multi-level post-stratification, and formal regret bounds for the growing-dimension streaming setting. A natural additional baseline, which we have not evaluated, is exponential-weighted moving average calibration: maintain an exponentially decayed running estimate of the weight adjustments and apply them to new observations. This would be $O(p)$ per observation with no inner loop but would lack the convergence guarantees of gradient-based methods. Comparison against such heuristics would sharpen the practical case for the methods developed here.
 
 \section{Conclusion}
 
-We have developed two streaming algorithms for survey raking that
-require only local updates per record.  Both stochastic gradient
-descent and multiplicative weights updates minimize a convex margin
-loss and converge to the classical raking solution.  Experiments
-demonstrate that these online rakers deliver substantial reductions in
-margin error with negligible compute cost, opening the door to
-always--on calibration in surveys, advertising and other domains.
+We have developed streaming algorithms for calibration weighting that provide calibrated weight estimates after each observation. The methods maintain running sufficient statistics and update only the new observation's weight, achieving per-observation cost of $O(Kp)$. Experiments show that streaming SGD closely approximates batch calibration accuracy, while periodic batch recalibration offers a practical middle ground. The framework applies wherever weights must be maintained incrementally to match known marginal distributions: rolling surveys, covariate balancing in sequential experiments, real-time dashboards, and online systems with distributional shift.
 
 \bibliographystyle{apalike}
 \bibliography{online_raking_references}

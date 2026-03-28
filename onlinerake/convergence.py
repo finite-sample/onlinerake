@@ -28,9 +28,21 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ._utils import requires_observations
+
 if TYPE_CHECKING:
     from .learning_rate import LearningRateSchedule
     from .online_raking_sgd import OnlineRakingSGD
+
+
+# Module-level constants for magic numbers
+LIPSCHITZ_PERTURBATION_SCALE = 0.1
+SUBOPTIMALITY_FACTOR = 0.1
+WEIGHT_RATIO_WARN = 100
+WEIGHT_RATIO_FAIL = 1000
+ESS_WARN_THRESHOLD = 0.5
+ESS_FAIL_THRESHOLD = 0.2
+LOW_WEIGHT_EFFICIENCY_THRESHOLD = 0.3
 
 
 @dataclass
@@ -331,6 +343,7 @@ def _verify_numerical_fallback(
     )
 
 
+@requires_observations(lambda: np.nan)
 def estimate_lipschitz_constant(
     raker: OnlineRakingSGD,
     n_samples: int = 1000,
@@ -358,9 +371,6 @@ def estimate_lipschitz_constant(
     Returns:
         Estimated Lipschitz constant L.
     """
-    if raker._n_obs == 0:
-        return np.nan
-
     np.random.seed(seed)
 
     # Get current weights and gradient
@@ -372,7 +382,7 @@ def estimate_lipschitz_constant(
 
     for _ in range(n_samples):
         # Create small perturbation
-        delta = np.random.randn(len(w)) * 0.1
+        delta = np.random.randn(len(w)) * LIPSCHITZ_PERTURBATION_SCALE
         w_perturbed = np.clip(w + delta, raker.min_weight, raker.max_weight)
 
         # Compute gradient at perturbed point
@@ -482,7 +492,7 @@ def analyze_convergence(
     # Additional warnings
     if raker._n_obs > 0:
         ess_ratio = raker.effective_sample_size / raker._n_obs
-        if ess_ratio < 0.3:
+        if ess_ratio < LOW_WEIGHT_EFFICIENCY_THRESHOLD:
             warnings.append(
                 f"Low weight efficiency ({ess_ratio:.1%}). "
                 "This may indicate target feasibility issues."
@@ -562,7 +572,7 @@ def theoretical_convergence_bound(
     elif learning_rate_schedule == "constant":
         # Constant learning rate gives bounded suboptimality
         # E[L(w_T)] - L(w*) ≤ O(η) for small enough η
-        suboptimality_bound = initial_lr * n_features * 0.1
+        suboptimality_bound = initial_lr * n_features * SUBOPTIMALITY_FACTOR
 
         return {
             "schedule_type": "constant",
@@ -715,20 +725,20 @@ def verify_convergence_conditions(
         results["checks"]["weight_stability"] = {
             "status": (
                 "PASS"
-                if weight_ratio < 100
-                else ("WARN" if weight_ratio < 1000 else "FAIL")
+                if weight_ratio < WEIGHT_RATIO_WARN
+                else ("WARN" if weight_ratio < WEIGHT_RATIO_FAIL else "FAIL")
             ),
             "weight_ratio": weight_ratio,
             "min_weight": weight_stats["min"],
             "max_weight": weight_stats["max"],
         }
 
-        if weight_ratio > 100:
+        if weight_ratio > WEIGHT_RATIO_WARN:
             results["recommendations"].append(
                 f"Large weight ratio ({weight_ratio:.1f}:1) detected. "
                 "This may indicate target feasibility issues or unstable convergence."
             )
-            if weight_ratio > 1000:
+            if weight_ratio > WEIGHT_RATIO_FAIL:
                 results["overall_status"] = "FAIL"
 
     # 4. Check effective sample size
@@ -736,19 +746,21 @@ def verify_convergence_conditions(
         ess_ratio = raker.effective_sample_size / raker._n_obs
         results["checks"]["ess_efficiency"] = {
             "status": (
-                "PASS" if ess_ratio > 0.5 else ("WARN" if ess_ratio > 0.2 else "FAIL")
+                "PASS"
+                if ess_ratio > ESS_WARN_THRESHOLD
+                else ("WARN" if ess_ratio > ESS_FAIL_THRESHOLD else "FAIL")
             ),
             "ess": raker.effective_sample_size,
             "n_obs": raker._n_obs,
             "efficiency": ess_ratio,
         }
 
-        if ess_ratio < 0.5:
+        if ess_ratio < ESS_WARN_THRESHOLD:
             results["recommendations"].append(
                 f"Low weight efficiency ({ess_ratio:.1%}). "
                 "Effective sample size is significantly reduced by weighting."
             )
-            if ess_ratio < 0.2:
+            if ess_ratio < ESS_FAIL_THRESHOLD:
                 results["overall_status"] = "FAIL"
 
     # 5. Check for oscillation

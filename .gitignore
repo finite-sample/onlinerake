@@ -214,3 +214,7 @@ outputs/
 # Generated figures
 scripts/figures/*.png
 scripts/figures/*.pdf
+ms/onlinerake.aux
+ms/onlinerake.bbl
+ms/onlinerake.blg
+ms/onlinerake.out

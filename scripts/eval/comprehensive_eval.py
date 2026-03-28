@@ -283,7 +283,7 @@ def evaluate_online_mwu(
     seed: int,
     scenario: str,
     learning_rate: float = 1.0,
-    n_steps: int = 3,
+    n_sgd_steps: int = 3,
 ) -> EvalResult:
     """Evaluate online MWU algorithm."""
     n_obs = len(observations)
@@ -293,7 +293,7 @@ def evaluate_online_mwu(
     raker = OnlineRakingMWU(
         targets,
         learning_rate=learning_rate,
-        n_steps=n_steps,
+        n_sgd_steps=n_sgd_steps,
         track_convergence=True,
         compute_weight_stats=False,
     )

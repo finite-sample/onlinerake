@@ -302,8 +302,6 @@ def compute_confidence_sequence(
 def estimate_path_dependent_variance(
     raker: OnlineRakingSGD,
     feature: str,
-    n_bootstrap: int = 100,  # noqa: ARG001
-    seed: int = 42,  # noqa: ARG001
 ) -> dict[str, float]:
     """Estimate variance accounting for path-dependent weight updates.
 
@@ -311,14 +309,9 @@ def estimate_path_dependent_variance(
     weights depend on the order and content of all observations, creating
     path dependence. This function estimates variance including this effect.
 
-    Note: Currently uses history-based variance estimation. The n_bootstrap
-    and seed parameters are reserved for future bootstrap resampling.
-
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
         feature: Feature name.
-        n_bootstrap: Reserved for future bootstrap resampling.
-        seed: Reserved for future bootstrap resampling.
 
     Returns:
         Dictionary with variance components.
