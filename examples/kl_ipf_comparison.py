@@ -86,7 +86,9 @@ def main():
     for feature in targets.feature_names:
         raw = raw_props[feature]
         target = targets[feature]
-        print(f"  {feature}: {raw:.1%} (target: {target:.0%}, bias: {raw - target:+.1%})")
+        print(
+            f"  {feature}: {raw:.1%} (target: {target:.0%}, bias: {raw - target:+.1%})"
+        )
     print()
 
     # =========================================================================
@@ -206,7 +208,9 @@ def main():
 
     learning_rates = [2.0, 1.0, 0.5, 0.3, 0.1]
 
-    print(f"{'LR':>6} {'n_steps':>8} {'KL from IPF':>14} {'Max Diff':>12} {'ESS Ratio':>12}")
+    print(
+        f"{'LR':>6} {'n_steps':>8} {'KL from IPF':>14} {'Max Diff':>12} {'ESS Ratio':>12}"
+    )
     print("-" * 54)
 
     for lr in learning_rates:
@@ -216,10 +220,14 @@ def main():
             mwu_test.partial_fit(obs)
 
         kl = kl_divergence_weights(mwu_test.weights, ipf_weights)
-        max_diff = max(abs(mwu_test.margins[f] - ipf.margins[f]) for f in targets.feature_names)
+        max_diff = max(
+            abs(mwu_test.margins[f] - ipf.margins[f]) for f in targets.feature_names
+        )
         ess_ratio = mwu_test.effective_sample_size / ipf.effective_sample_size
 
-        print(f"{lr:>6.2f} {n_steps:>8} {kl:>14.6f} {max_diff:>12.4f} {ess_ratio:>12.3f}")
+        print(
+            f"{lr:>6.2f} {n_steps:>8} {kl:>14.6f} {max_diff:>12.4f} {ess_ratio:>12.3f}"
+        )
 
     print()
     print("Note: Smaller learning rates with more steps generally converge")

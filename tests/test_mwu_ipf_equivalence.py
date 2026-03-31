@@ -356,9 +356,7 @@ class TestVariousTargetConfigurations:
 
     def test_many_features(self):
         """MWU matches IPF with many features."""
-        targets = Targets(
-            a=0.5, b=0.4, c=0.6, d=0.3, e=0.55, f=0.45, g=0.35, h=0.65
-        )
+        targets = Targets(a=0.5, b=0.4, c=0.6, d=0.3, e=0.55, f=0.45, g=0.35, h=0.65)
         observations = generate_biased_sample(300, targets, bias=0.1)
 
         mwu = OnlineRakingMWU(targets, learning_rate=0.3, n_sgd_steps=5)
