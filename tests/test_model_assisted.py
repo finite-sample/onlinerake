@@ -4,12 +4,18 @@ import numpy as np
 import pytest
 
 from onlinerake import Targets
-from onlinerake.model_assisted import (ModelAssistedRaker,
-                                       ModelAssistedTargets,
-                                       PoststratificationCell,
-                                       PoststratificationCells, StreamingMRP)
-from onlinerake.models import (ExternalModelWrapper, LinearOutcomeModel,
-                               LogisticOutcomeModel)
+from onlinerake.model_assisted import (
+    ModelAssistedRaker,
+    ModelAssistedTargets,
+    PoststratificationCell,
+    PoststratificationCells,
+    StreamingMRP,
+)
+from onlinerake.models import (
+    ExternalModelWrapper,
+    LinearOutcomeModel,
+    LogisticOutcomeModel,
+)
 
 
 class TestLinearOutcomeModel:
@@ -241,7 +247,7 @@ class TestModelAssistedRaker:
         ]
         outcomes = [0.5, 0.6, 0.4, 0.3]
 
-        for obs, outcome in zip(observations, outcomes):
+        for obs, outcome in zip(observations, outcomes, strict=False):
             raker.partial_fit(obs, outcome=outcome)
 
         assert raker._n_obs == 4
@@ -267,7 +273,7 @@ class TestModelAssistedRaker:
         ]
         outcomes = [0.6, 0.4, 0.5, 0.5]
 
-        for obs, outcome in zip(observations, outcomes):
+        for obs, outcome in zip(observations, outcomes, strict=False):
             raker.partial_fit(obs, outcome=outcome)
 
         estimate = raker.model_assisted_estimate

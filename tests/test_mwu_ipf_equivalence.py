@@ -218,7 +218,6 @@ class TestMWUMatchesIPF:
 
         # Generate lots of observations
         observations = generate_biased_sample(500, targets, bias=0.1)
-        ipf = BatchIPF(targets).fit(observations)
 
         # Track distance from IPF at different stages
         mwu = OnlineRakingMWU(targets, learning_rate=0.5, n_sgd_steps=3)
@@ -239,7 +238,7 @@ class TestMWUMatchesIPF:
         # At minimum, final should be better than first
         assert distances[-1] < distances[0] * 2, (
             f"Final distance should be comparable or better than initial. "
-            f"Distances: {list(zip(checkpoints, distances))}"
+            f"Distances: {list(zip(checkpoints, distances, strict=False))}"
         )
 
     def test_kl_from_ipf_stays_reasonable(self):

@@ -107,7 +107,7 @@ def main():
     for obs in observations:
         mwu.partial_fit(obs)
 
-    print(f"MWU Results:")
+    print("MWU Results:")
     print(f"  Final loss: {mwu.loss:.6f}")
     print(f"  ESS: {mwu.effective_sample_size:.1f}")
     print()
@@ -131,7 +131,7 @@ def main():
 
     ipf = BatchIPF(targets).fit(observations)
 
-    print(f"IPF Results:")
+    print("IPF Results:")
     print(f"  Final loss: {ipf.loss:.6f}")
     print(f"  ESS: {ipf.effective_sample_size:.1f}")
     print(f"  Iterations: {ipf.n_iterations}")
