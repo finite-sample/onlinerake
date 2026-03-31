@@ -71,6 +71,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
         track_convergence: bool = True,
         convergence_window: int = 20,
         compute_weight_stats: bool | int = False,
+        track_kl_divergence: bool = False,
     ) -> None:
         super().__init__(
             targets=targets,
@@ -82,6 +83,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
             track_convergence=track_convergence,
             convergence_window=convergence_window,
             compute_weight_stats=compute_weight_stats,
+            track_kl_divergence=track_kl_divergence,
         )
 
     def partial_fit(self, obs: dict[str, Any] | Any) -> None:
@@ -111,6 +113,11 @@ class OnlineRakingMWU(OnlineRakingSGD):
         self._features[self._n_obs] = feature_values
         self._weights[self._n_obs] = 1.0
         self._n_obs += 1
+
+        # Capture pre-update weights for KL tracking (if enabled)
+        pre_update_weights: np.ndarray | None = None
+        if self.track_kl_divergence:
+            pre_update_weights = self._weights[: self._n_obs].copy()
 
         # MWU steps (entropic mirror descent) with safe exponent clipping
         max_log = float(log(finfo(self._weights.dtype).max))
@@ -142,6 +149,14 @@ class OnlineRakingMWU(OnlineRakingSGD):
             # Verbose output using inherited helper
             if step == 0:
                 self._log_update("MWU Obs", gradient_norm)
+
+        # Track KL divergence between consecutive updates
+        if self.track_kl_divergence and pre_update_weights is not None:
+            from .divergence import kl_divergence_weights
+
+            post_update_weights = self._weights[: self._n_obs]
+            kl = kl_divergence_weights(post_update_weights, pre_update_weights)
+            self._kl_history.append(kl)
 
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)

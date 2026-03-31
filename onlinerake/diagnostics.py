@@ -21,6 +21,7 @@ import numpy as np
 from ._utils import requires_observations
 
 if TYPE_CHECKING:
+    from .batch_ipf import BatchIPF
     from .online_raking_sgd import OnlineRakingSGD
 
 
@@ -794,3 +795,182 @@ def explain_infeasibility_causes() -> dict[str, str]:
             "increase the number of gradient steps per observation."
         ),
     }
+
+
+@dataclass
+class IPFComparison:
+    """Comparison between streaming raker and batch IPF solutions.
+
+    Attributes:
+        weight_kl: KL divergence D_KL(w_raker || w_ipf).
+        weight_tv: Total variation distance between weight distributions.
+        margin_mse: Mean squared error between margins.
+        margin_max_diff: Maximum absolute difference in margins.
+        ess_ratio: ESS_raker / ESS_ipf ratio.
+        raker_loss: Final loss of the streaming raker.
+        ipf_loss: Final loss of batch IPF.
+    """
+
+    weight_kl: float
+    weight_tv: float
+    margin_mse: float
+    margin_max_diff: float
+    ess_ratio: float
+    raker_loss: float
+    ipf_loss: float
+
+
+def compare_to_ipf(
+    raker: OnlineRakingSGD,
+    ipf: BatchIPF | None = None,
+) -> IPFComparison:
+    """Compare streaming raker solution to batch IPF.
+
+    This function quantifies how close a streaming raker (SGD or MWU) is
+    to the batch IPF solution. The key insight is that MWU performs mirror
+    descent with KL divergence, and should converge to IPF as the learning
+    rate decreases.
+
+    Args:
+        raker: Fitted streaming raker (OnlineRakingSGD or OnlineRakingMWU).
+        ipf: Pre-fitted BatchIPF object. If None, fits IPF on the raker's
+            data (requires accessing internal state).
+
+    Returns:
+        IPFComparison with comparison metrics:
+        - weight_kl: D_KL(w_raker || w_ipf) - how different the weights are
+        - weight_tv: Total variation distance between normalized weights
+        - margin_mse: MSE between weighted margins
+        - margin_max_diff: Worst-case margin difference
+        - ess_ratio: Relative effective sample size
+
+    Raises:
+        ValueError: If raker has no observations or if IPF fitting fails.
+
+    Examples:
+        >>> from onlinerake import OnlineRakingMWU, BatchIPF, Targets
+        >>> targets = Targets(female=0.51, college=0.32)
+        >>> mwu = OnlineRakingMWU(targets, learning_rate=0.5)
+        >>> for obs in data:
+        ...     mwu.partial_fit(obs)
+        >>> ipf = BatchIPF(targets).fit(data)
+        >>> comparison = compare_to_ipf(mwu, ipf)
+        >>> print(f"Weight KL from IPF: {comparison.weight_kl:.6f}")
+        >>> print(f"Margin MSE: {comparison.margin_mse:.6f}")
+
+    Note:
+        For MWU to closely match IPF:
+        1. Use small learning rates (η < 1.0)
+        2. Process many observations (n > 100)
+        3. Use multiple SGD steps per observation (n_sgd_steps >= 3)
+
+        MWU with η → 0 should produce D_KL → 0 and margin_mse → 0.
+    """
+    from .batch_ipf import BatchIPF
+    from .divergence import kl_divergence_weights, total_variation_weights
+
+    if raker._n_obs == 0:
+        raise ValueError("Raker has no observations; cannot compare to IPF")
+
+    # Fit IPF if not provided
+    if ipf is None:
+        # Reconstruct observations from internal state
+        ipf = BatchIPF(raker.targets)
+        observations = []
+        for i in range(raker._n_obs):
+            obs = {}
+            for j, name in enumerate(raker._feature_names):
+                obs[name] = int(raker._features[i, j])
+            observations.append(obs)
+        ipf.fit(observations)
+
+    # Ensure same number of observations
+    if raker._n_obs != ipf._n_obs:
+        raise ValueError(
+            f"Raker has {raker._n_obs} observations but IPF has {ipf._n_obs}. "
+            "Ensure IPF was fit on the same data."
+        )
+
+    # Get weights
+    w_raker = raker.weights
+    w_ipf = ipf.weights
+
+    # Compute divergence metrics
+    weight_kl = kl_divergence_weights(w_raker, w_ipf)
+    weight_tv = total_variation_weights(w_raker, w_ipf)
+
+    # Compute margin comparison
+    margins_raker = raker.margins
+    margins_ipf = ipf.margins
+
+    margin_diffs = []
+    for name in raker._feature_names:
+        diff = margins_raker[name] - margins_ipf[name]
+        margin_diffs.append(diff)
+
+    margin_mse = float(np.mean([d**2 for d in margin_diffs]))
+    margin_max_diff = float(np.max([abs(d) for d in margin_diffs]))
+
+    # Compute ESS ratio
+    ess_raker = raker.effective_sample_size
+    ess_ipf = ipf.effective_sample_size
+    ess_ratio = ess_raker / ess_ipf if ess_ipf > 0 else np.nan
+
+    return IPFComparison(
+        weight_kl=weight_kl,
+        weight_tv=weight_tv,
+        margin_mse=margin_mse,
+        margin_max_diff=margin_max_diff,
+        ess_ratio=ess_ratio,
+        raker_loss=raker.loss,
+        ipf_loss=ipf.loss,
+    )
+
+
+def optimal_mwu_learning_rate(n_obs: int, n_features: int) -> float:
+    """Compute theoretical optimal learning rate for MWU to approximate IPF.
+
+    From mirror descent theory, the optimal learning rate is approximately:
+        η* ≈ sqrt(2 * log(n_obs) / T)
+
+    where T is the expected number of iterations. For streaming raking with
+    n_sgd_steps per observation, T ≈ n_obs * n_sgd_steps.
+
+    A smaller learning rate means MWU stays closer to IPF at each step,
+    but convergence is slower. This function provides a reasonable starting
+    point for tuning.
+
+    Args:
+        n_obs: Expected number of observations.
+        n_features: Number of features being calibrated.
+
+    Returns:
+        Recommended learning rate for MWU.
+
+    Examples:
+        >>> lr = optimal_mwu_learning_rate(n_obs=1000, n_features=4)
+        >>> print(f"Recommended learning rate: {lr:.3f}")
+
+    Note:
+        This is a theoretical guideline. In practice:
+        - For IPF-matching: use lr < 0.5
+        - For faster convergence: use lr 1.0-5.0
+        - Monitor loss and adjust as needed
+    """
+    if n_obs <= 1:
+        return 1.0
+
+    # From mirror descent regret bounds:
+    # η* = sqrt(2 * D / (T * G^2))
+    # where D is diameter of domain (log(n_obs) for simplex)
+    # and G is gradient bound (depends on n_features)
+
+    # Simplified heuristic that works well empirically
+    log_n = np.log(n_obs)
+    eta = np.sqrt(2 * log_n / n_obs)
+
+    # Scale by features (more features = more complex optimization)
+    eta *= np.sqrt(n_features)
+
+    # Clamp to reasonable range
+    return float(np.clip(eta, 0.01, 5.0))

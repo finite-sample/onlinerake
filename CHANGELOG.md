@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-30
+
+### Added
+- KL divergence tracking for OnlineRakingSGD and OnlineRakingMWU (`track_kl_divergence` parameter)
+- `kl_divergence_weights()` - compute KL divergence between weight distributions
+- `total_variation_weights()` - compute total variation distance
+- `symmetric_kl_divergence()` - symmetric KL measure
+- `compare_to_ipf()` - compare streaming raker to batch IPF solution
+- `optimal_mwu_learning_rate()` - learning rate guidance for IPF-matching
+- `IPFComparison` dataclass for IPF comparison results
+- New example: `examples/kl_ipf_comparison.py` demonstrating KL tracking and IPF comparison
+- Comprehensive tests for MWU-IPF equivalence
+
+### Changed
+- OnlineRakingMWU inherits `track_kl_divergence` from OnlineRakingSGD
+
 ## [1.3.0] - 2026-03-26
 
 ### Added

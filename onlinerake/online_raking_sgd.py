@@ -59,6 +59,9 @@ class OnlineRakingSGD:
             If int k: compute every k observations. Default: False.
         max_history: Maximum historical states to retain. None for unlimited
             (may cause memory issues). Default: 1000.
+        track_kl_divergence: If True, track KL divergence between consecutive
+            weight distributions. Useful for monitoring MWU convergence and
+            comparing to IPF. Default: False.
 
     Attributes:
         targets: The target proportions.
@@ -98,6 +101,7 @@ class OnlineRakingSGD:
         convergence_window: int = 20,
         compute_weight_stats: bool | int = False,
         max_history: int | None = 1000,
+        track_kl_divergence: bool = False,
     ) -> None:
         # Handle learning rate - can be float or schedule
         if isinstance(learning_rate, (int, float)):
@@ -142,6 +146,7 @@ class OnlineRakingSGD:
         self.convergence_window = convergence_window
         self.compute_weight_stats = compute_weight_stats
         self.max_history = max_history
+        self.track_kl_divergence = track_kl_divergence
 
         # Extract feature information from targets
         self._feature_names = targets.feature_names
@@ -175,6 +180,10 @@ class OnlineRakingSGD:
         self._learning_rate_history: list[float] = []
         self._converged: bool = False
         self._convergence_step: int | None = None
+
+        # KL divergence tracking (opt-in for performance)
+        self._kl_history: list[float] = []
+        self._prev_weights: np.ndarray | None = None
 
     # ------------------------------------------------------------------
     # Utility properties
@@ -345,6 +354,44 @@ class OnlineRakingSGD:
             analyzing convergence behavior.
         """
         return self._gradient_norms.copy()
+
+    @property
+    def kl_divergence_history(self) -> list[float]:
+        """Get history of KL divergence between consecutive weight updates.
+
+        Only populated if track_kl_divergence=True was passed to __init__.
+        Each entry represents D_KL(w_t || w_{t-1}) after processing
+        observation t.
+
+        Returns:
+            List of KL divergence values. Empty if tracking disabled.
+
+        Note:
+            MWU minimizes KL divergence from previous weights at each step,
+            so this tracks how much the distribution changes per update.
+            Smaller values indicate the algorithm is stabilizing.
+        """
+        return self._kl_history.copy()
+
+    @property
+    def cumulative_kl_divergence(self) -> float:
+        """Get total KL divergence accumulated over all updates.
+
+        Sum of D_KL(w_t || w_{t-1}) across all t. This measures the
+        total "path length" in KL space taken by the algorithm.
+
+        Returns:
+            Cumulative KL divergence. Returns 0.0 if tracking disabled
+            or no updates processed.
+
+        Note:
+            Useful for comparing algorithms: MWU should accumulate less
+            KL divergence than SGD when starting from uniform weights,
+            since MWU explicitly minimizes KL.
+        """
+        if not self._kl_history:
+            return 0.0
+        return float(sum(self._kl_history))
 
     @property
     def weight_distribution_stats(self) -> dict[str, float]:
@@ -695,6 +742,11 @@ class OnlineRakingSGD:
         self._weights[self._n_obs] = 1.0
         self._n_obs += 1
 
+        # Capture pre-update weights for KL tracking (if enabled)
+        pre_update_weights: np.ndarray | None = None
+        if self.track_kl_divergence:
+            pre_update_weights = self._weights[: self._n_obs].copy()
+
         # Get current learning rate (may be from schedule)
         current_lr = self._get_current_learning_rate()
 
@@ -721,6 +773,14 @@ class OnlineRakingSGD:
             # Verbose output for debugging
             if step == 0:
                 self._log_update("Obs", gradient_norm)
+
+        # Track KL divergence between consecutive updates
+        if self.track_kl_divergence and pre_update_weights is not None:
+            from .divergence import kl_divergence_weights
+
+            post_update_weights = self._weights[: self._n_obs]
+            kl = kl_divergence_weights(post_update_weights, pre_update_weights)
+            self._kl_history.append(kl)
 
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)

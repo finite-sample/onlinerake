@@ -53,58 +53,40 @@ Note:
 """
 
 from .batch_ipf import BatchIPF
-from .convergence import (
-                          ConvergenceAnalysis,
-                          RobbinsMonroVerification,
-                          analyze_convergence,
-                          estimate_lipschitz_constant,
+from .convergence import (ConvergenceAnalysis, RobbinsMonroVerification,
+                          analyze_convergence, estimate_lipschitz_constant,
                           mwu_convergence_analysis,
                           theoretical_convergence_bound,
-                          verify_convergence_conditions,
-                          verify_robbins_monro,
-)
-from .diagnostics import (
-                          FeasibilityReport,
-                          InfeasibilityAnalysis,
-                          MarginEstimate,
-                          analyze_infeasibility,
-                          check_target_feasibility,
-                          compute_confidence_interval,
-                          compute_design_effect,
-                          compute_weight_efficiency,
-                          estimate_margin_std_error,
+                          verify_convergence_conditions, verify_robbins_monro)
+from .diagnostics import (FeasibilityReport, InfeasibilityAnalysis,
+                          IPFComparison, MarginEstimate, analyze_infeasibility,
+                          check_target_feasibility, compare_to_ipf,
+                          compute_confidence_interval, compute_design_effect,
+                          compute_weight_efficiency, estimate_margin_std_error,
                           estimate_margin_variance,
-                          explain_infeasibility_causes,
-                          get_margin_estimates,
-                          suggest_feasible_targets,
-                          summarize_raking_results,
-)
-from .learning_rate import (
-                          AdaptiveLR,
-                          ConstantLR,
-                          InverseTimeDecayLR,
-                          LearningRateSchedule,
-                          PolynomialDecayLR,
-                          robbins_monro_schedule,
-)
+                          explain_infeasibility_causes, get_margin_estimates,
+                          optimal_mwu_learning_rate, suggest_feasible_targets,
+                          summarize_raking_results)
+from .divergence import (kl_divergence_weights, symmetric_kl_divergence,
+                         total_variation_weights)
+from .learning_rate import (AdaptiveLR, ConstantLR, InverseTimeDecayLR,
+                            LearningRateSchedule, PolynomialDecayLR,
+                            robbins_monro_schedule)
+from .model_assisted import (ModelAssistedRaker, ModelAssistedTargets,
+                             PoststratificationCell, PoststratificationCells,
+                             StreamingMRP)
+from .models import (ExternalModelWrapper, LinearOutcomeModel,
+                     LogisticOutcomeModel, OutcomeModel)
 from .online_raking_mwu import OnlineRakingMWU
 from .online_raking_sgd import OnlineRakingSGD
-from .sensitivity import (
-                          SensitivityReport,
-                          SensitivityResult,
-                          quick_sensitivity_check,
-                          run_sensitivity_analysis,
-)
-from .streaming_inference import (
-                          ConfidenceSequence,
-                          RetroactiveImpact,
-                          StreamingEstimator,
-                          StreamingSnapshot,
-                          analyze_estimate_stability,
-                          compute_confidence_sequence,
-                          estimate_path_dependent_variance,
-                          explain_streaming_semantics,
-)
+from .sensitivity import (SensitivityReport, SensitivityResult,
+                          quick_sensitivity_check, run_sensitivity_analysis)
+from .streaming_inference import (ConfidenceSequence, RetroactiveImpact,
+                                  StreamingEstimator, StreamingSnapshot,
+                                  analyze_estimate_stability,
+                                  compute_confidence_sequence,
+                                  estimate_path_dependent_variance,
+                                  explain_streaming_semantics)
 from .targets import Targets
 
 __all__ = [
@@ -133,6 +115,7 @@ __all__ = [
     "MarginEstimate",
     "FeasibilityReport",
     "InfeasibilityAnalysis",
+    "IPFComparison",
     "estimate_margin_variance",
     "estimate_margin_std_error",
     "compute_confidence_interval",
@@ -144,6 +127,12 @@ __all__ = [
     "compute_design_effect",
     "compute_weight_efficiency",
     "summarize_raking_results",
+    "compare_to_ipf",
+    "optimal_mwu_learning_rate",
+    # Divergence metrics
+    "kl_divergence_weights",
+    "total_variation_weights",
+    "symmetric_kl_divergence",
     # Streaming inference
     "StreamingSnapshot",
     "ConfidenceSequence",
@@ -158,6 +147,16 @@ __all__ = [
     "SensitivityReport",
     "run_sensitivity_analysis",
     "quick_sensitivity_check",
+    # Model-assisted calibration (GREG/MRP)
+    "OutcomeModel",
+    "LinearOutcomeModel",
+    "LogisticOutcomeModel",
+    "ExternalModelWrapper",
+    "ModelAssistedTargets",
+    "ModelAssistedRaker",
+    "PoststratificationCell",
+    "PoststratificationCells",
+    "StreamingMRP",
 ]
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
