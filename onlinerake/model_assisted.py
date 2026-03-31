@@ -100,6 +100,8 @@ class ModelAssistedRaker(OnlineRakingSGD):
         track_convergence: If True, monitor convergence. Default True.
         convergence_window: Observations for convergence detection. Default 20.
         compute_weight_stats: Control weight stats computation. Default False.
+        max_history: Maximum observations to retain for history. If None, keeps
+            all history. Default 1000.
         feature_names_in_obs: Names of features in observation that correspond
             to model input. If None, uses demographic target feature names.
 
