@@ -60,31 +60,6 @@ class StreamingSnapshot:
 
 
 @dataclass
-class ConfidenceSequence:
-    """Time-uniform confidence sequence for streaming estimation.
-
-    Unlike fixed-sample confidence intervals, confidence sequences
-    remain valid at all stopping times. They provide anytime-valid
-    inference without requiring a pre-specified sample size.
-
-    Attributes:
-        feature: The feature being estimated.
-        lower_bounds: Lower confidence bounds at each time point.
-        upper_bounds: Upper confidence bounds at each time point.
-        estimates: Point estimates at each time point.
-        confidence_level: Nominal coverage probability.
-        times: Observation numbers for each bound.
-    """
-
-    feature: str
-    lower_bounds: list[float]
-    upper_bounds: list[float]
-    estimates: list[float]
-    confidence_level: float
-    times: list[int]
-
-
-@dataclass
 class RetroactiveImpact:
     """Analysis of how new observations retroactively change estimates.
 
@@ -214,91 +189,6 @@ class StreamingEstimator:
         return closest
 
 
-def compute_confidence_sequence(
-    raker: OnlineRakingSGD,
-    feature: str,
-    confidence_level: float = 0.95,
-) -> ConfidenceSequence:
-    """Compute a time-uniform confidence sequence for a feature.
-
-    Uses a betting-based approach to construct anytime-valid confidence
-    intervals that remain valid at all stopping times.
-
-    The width of the sequence shrinks as O(1/√t) but slower than fixed-
-    sample intervals, paying for the flexibility of sequential validity.
-
-    Args:
-        raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
-        feature: Feature name to construct sequence for.
-        confidence_level: Nominal coverage probability.
-
-    Returns:
-        ConfidenceSequence with bounds at each observation.
-    """
-    if raker._n_obs == 0:
-        return ConfidenceSequence(
-            feature=feature,
-            lower_bounds=[],
-            upper_bounds=[],
-            estimates=[],
-            confidence_level=confidence_level,
-            times=[],
-        )
-
-    # Compute sequence using boundary crossing approach
-    alpha = 1 - confidence_level
-    lower_bounds: list[float] = []
-    upper_bounds: list[float] = []
-    estimates: list[float] = []
-    times: list[int] = []
-
-    # Use history if available, otherwise just current state
-    if raker.history:
-        for state in raker.history:
-            t = state["n_obs"]
-            margins = state["weighted_margins"]
-            ess = state["ess"]
-
-            if ess <= 0:
-                continue
-
-            p_hat = margins[feature]
-
-            # Time-uniform confidence interval using Hoeffding-style bound
-            # Width scales as sqrt(log(log(t) + 1) / t) for anytime validity
-            log_term = np.log(np.log(t + 2) + 1) + np.log(2 / alpha)
-            width = np.sqrt(log_term / (2 * ess))
-
-            lower = max(0.0, p_hat - width)
-            upper = min(1.0, p_hat + width)
-
-            lower_bounds.append(lower)
-            upper_bounds.append(upper)
-            estimates.append(p_hat)
-            times.append(t)
-    else:
-        t = raker._n_obs
-        p_hat = raker.margins[feature]
-        ess = raker.effective_sample_size
-
-        log_term = np.log(np.log(t + 2) + 1) + np.log(2 / alpha)
-        width = np.sqrt(log_term / (2 * ess))
-
-        lower_bounds.append(max(0.0, p_hat - width))
-        upper_bounds.append(min(1.0, p_hat + width))
-        estimates.append(p_hat)
-        times.append(t)
-
-    return ConfidenceSequence(
-        feature=feature,
-        lower_bounds=lower_bounds,
-        upper_bounds=upper_bounds,
-        estimates=estimates,
-        confidence_level=confidence_level,
-        times=times,
-    )
-
-
 def estimate_path_dependent_variance(
     raker: OnlineRakingSGD,
     feature: str,
@@ -308,6 +198,11 @@ def estimate_path_dependent_variance(
     Standard variance estimators assume fixed weights. In streaming raking,
     weights depend on the order and content of all observations, creating
     path dependence. This function estimates variance including this effect.
+
+    The sampling component is a replication variance -- the calibration is
+    re-run inside each replicate -- rather than the ``p(1-p)/ESS`` this used to
+    carry, which is the variance of an unweighted proportion and was measured
+    at 4.43 times the margin's actual spread.
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
@@ -323,12 +218,13 @@ def estimate_path_dependent_variance(
             "path_variance": np.nan,
         }
 
-    # Get current estimate
-    current_margin = raker.margins[feature]
+    # Replication variance, not p(1-p)/ESS. The latter is the variance of an
+    # UNWEIGHTED proportion and was measured at 4.43x the margin's true spread,
+    # because it prices in none of the variance reduction that calibrating onto
+    # a fixed target produces. See onlinerake.diagnostics.
+    from .diagnostics import estimate_margin_variance
 
-    # Simple variance estimate (ignoring path dependence)
-    ess = raker.effective_sample_size
-    sampling_variance = current_margin * (1 - current_margin) / ess
+    sampling_variance = estimate_margin_variance(raker, feature)
 
     # Path-dependent variance from history variation
     if len(raker.history) > 10:

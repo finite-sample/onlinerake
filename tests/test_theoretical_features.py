@@ -27,11 +27,9 @@ from onlinerake.learning_rate import (
     robbins_monro_schedule,
 )
 from onlinerake.streaming_inference import (
-    ConfidenceSequence,
     StreamingEstimator,
     StreamingSnapshot,
     analyze_estimate_stability,
-    compute_confidence_sequence,
     estimate_path_dependent_variance,
     explain_streaming_semantics,
 )
@@ -287,22 +285,25 @@ class TestStreamingInference:
             }
             self.raker.partial_fit(obs)
 
-    def test_confidence_sequence_computation(self):
-        """Should compute valid confidence sequences."""
-        conf_seq = compute_confidence_sequence(self.raker, "age", confidence_level=0.95)
+    def test_calibration_reports_the_gap_rather_than_an_interval(self):
+        """Replaces test_confidence_sequence_computation.
 
-        assert isinstance(conf_seq, ConfidenceSequence)
-        assert conf_seq.feature == "age"
-        assert conf_seq.confidence_level == 0.95
-        assert len(conf_seq.lower_bounds) > 0
-        assert len(conf_seq.upper_bounds) == len(conf_seq.lower_bounds)
+        ``compute_confidence_sequence`` has been removed. It put a shrinking
+        Hoeffding-style band around a calibrated margin and called the result
+        time-uniform; measured anytime coverage was 0.470 against a nominal
+        0.95. The band was not the problem. A raked margin is aimed at a target
+        the caller supplied as known, so R's ``survey`` reports a standard error
+        of exactly zero for one, and no width around it estimates anything.
 
-        for lower, upper in zip(
-            conf_seq.lower_bounds, conf_seq.upper_bounds, strict=False
-        ):
-            assert lower <= upper
-            assert 0 <= lower <= 1
-            assert 0 <= upper <= 1
+        What an online raker can report honestly is how far it got.
+        """
+        from onlinerake.diagnostics import margin_calibration
+
+        calibrations = margin_calibration(self.raker)
+        assert {c.feature for c in calibrations} == {"age", "gender"}
+        for cal in calibrations:
+            assert cal.gap == pytest.approx(cal.estimate - cal.target)
+            assert cal.std_error >= 0
 
     def test_path_dependent_variance(self):
         """Should estimate path-dependent variance."""
@@ -449,8 +450,9 @@ class TestIntegrationConvergenceAndInfeasibility:
         infeas = analyze_infeasibility(raker)
         assert infeas.is_feasible
 
-        conf_seq = compute_confidence_sequence(raker, "age")
-        assert len(conf_seq.lower_bounds) > 0
+        from onlinerake.diagnostics import margin_calibration
+
+        assert len(margin_calibration(raker)) > 0
 
         conditions = verify_convergence_conditions(raker)
         assert conditions["overall_status"] in ["PASS", "WARN"]

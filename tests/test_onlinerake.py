@@ -853,22 +853,29 @@ class TestContinuousDiagnostics:
         report = check_target_feasibility(raker)
         assert report.is_feasible or "age" not in report.problematic_features
 
-    def test_confidence_interval_continuous(self):
-        """Test confidence interval for continuous features."""
-        from onlinerake.diagnostics import compute_confidence_interval
+    def test_calibration_reports_the_gap_for_continuous_features(self):
+        """A continuous margin reports its distance from target, not an interval.
+
+        This replaced ``test_confidence_interval_continuous``, which asserted
+        ``lower < upper`` and that both bounds were finite -- true of any
+        interval of the form ``x +/- z*se`` whatever ``se`` is. The interval it
+        tested has been removed: a raked margin is calibrated toward a target
+        supplied as known, so it carries no sampling uncertainty about it.
+        """
+        from onlinerake.diagnostics import margin_calibration
 
         targets = Targets(age=(35.0, "mean"))
         raker = OnlineRakingSGD(targets, learning_rate=1.0)
 
-        ages = [25.0, 30.0, 35.0, 40.0, 45.0]
-        for age in ages:
+        for age in [25.0, 30.0, 35.0, 40.0, 45.0]:
             raker.partial_fit({"age": age})
 
-        lower, upper = compute_confidence_interval(raker, "age")
-        # For continuous, no clamping to [0,1]
-        assert np.isfinite(lower)
-        assert np.isfinite(upper)
-        assert lower < upper
+        (cal,) = margin_calibration(raker)
+        assert cal.feature == "age"
+        assert cal.target == 35.0
+        # The gap is exact arithmetic, not an estimate.
+        assert cal.gap == pytest.approx(cal.estimate - cal.target)
+        assert np.isfinite(cal.std_error)
 
 
 if __name__ == "__main__":

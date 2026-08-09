@@ -44,26 +44,43 @@ DEFAULT_N_REPLICATES = 10
 
 
 @dataclass
-class MarginEstimate:
-    """Weighted margin estimate with uncertainty quantification.
+class MarginCalibration:
+    """How closely one weighted margin reached the target it was aimed at.
+
+    Deliberately *not* a confidence interval. A raked margin is calibrated
+    toward a target the caller supplied as known, so its estimand is that
+    target and it carries no sampling uncertainty about it -- R's ``survey``
+    reports a standard error of exactly zero for a raking variable. What an
+    online raker has that a batch one does not is a margin that has not quite
+    arrived, and that shortfall is a convergence property.
+
+    Both terms are exact or estimated from the run itself, so nothing here
+    depends on a default being right.
 
     Attributes:
         feature: Name of the feature.
-        target: Target population proportion.
-        estimate: Weighted sample estimate.
-        std_error: Estimated standard error.
-        ci_lower: Lower bound of confidence interval.
-        ci_upper: Upper bound of confidence interval.
+        target: The target the raker was aimed at.
+        estimate: The weighted margin actually achieved.
+        gap: ``estimate - target``. Exact, not estimated.
+        std_error: Replication standard error of the margin -- how much it
+            moves across recalibrated subsamples.
+        gap_ratio: ``|gap| / std_error``. Below about one, the margin has
+            arrived to within its own run-to-run noise. Well above one, the
+            raker stopped short by more than the noise, and any inference built
+            on this margin inherits that shortfall. Raising
+            ``learning_rate * n_sgd_steps`` shrinks the gap roughly in
+            proportion.
         raw_estimate: Unweighted sample proportion.
-        bias_reduction: Percentage reduction in bias from target.
+        bias_reduction: Percentage reduction in distance to target from
+            reweighting.
     """
 
     feature: str
     target: float
     estimate: float
+    gap: float
     std_error: float
-    ci_lower: float
-    ci_upper: float
+    gap_ratio: float
     raw_estimate: float
     bias_reduction: float
 
@@ -358,72 +375,12 @@ def _z_score(confidence_level: float) -> float:
     return float(NormalDist().inv_cdf(1 - (1 - confidence_level) / 2))
 
 
-def _interval_from_std_error(
+def margin_calibration(
     raker: OnlineRakingSGD,
-    feature: str,
-    estimate: float,
-    std_error: float,
-    confidence_level: float,
-) -> tuple[float, float]:
-    """Assemble a normal-approximation interval around an estimate.
-
-    Args:
-        raker: The fitted raker, consulted for whether the feature is binary.
-        feature: Name of the feature.
-        estimate: The point estimate the interval is centred on.
-        std_error: Its standard error.
-        confidence_level: Nominal coverage.
-
-    Returns:
-        Tuple of (lower_bound, upper_bound).
-    """
-    if np.isnan(std_error):
-        return (np.nan, np.nan)
-
-    z = _z_score(confidence_level)
-    lower = estimate - z * std_error
-    upper = estimate + z * std_error
-    if raker.targets.is_binary(feature):
-        lower = max(0.0, lower)
-        upper = min(1.0, upper)
-    return (float(lower), float(upper))
-
-
-def compute_confidence_interval(
-    raker: OnlineRakingSGD,
-    feature: str,
-    confidence_level: float = 0.95,
     method: str = "random_groups",
     n_replicates: int = DEFAULT_N_REPLICATES,
-) -> tuple[float, float]:
-    """Compute confidence interval for a weighted margin.
-
-    Uses normal approximation with estimated standard error.
-
-    Args:
-        raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
-        feature: Name of the feature.
-        confidence_level: Confidence level (default 0.95 for 95% CI).
-        method: Replication scheme, passed to :func:`estimate_margin_variance`.
-        n_replicates: Number of replicate groups.
-
-    Returns:
-        Tuple of (lower_bound, upper_bound).
-    """
-    estimate = raker.margins[feature]
-    std_error = estimate_margin_std_error(raker, feature, method, n_replicates)
-    return _interval_from_std_error(
-        raker, feature, estimate, std_error, confidence_level
-    )
-
-
-def get_margin_estimates(
-    raker: OnlineRakingSGD,
-    confidence_level: float = 0.95,
-    method: str = "random_groups",
-    n_replicates: int = DEFAULT_N_REPLICATES,
-) -> list[MarginEstimate]:
-    """Get comprehensive margin estimates for all features.
+) -> list[MarginCalibration]:
+    """How closely each weighted margin reached its target.
 
     The replication runs once here rather than once per feature: a replicate
     carries the margins of every feature, so recalibrating for each of them in
@@ -432,12 +389,11 @@ def get_margin_estimates(
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
-        confidence_level: Confidence level for intervals.
         method: Replication scheme, passed to :func:`estimate_margin_variance`.
         n_replicates: Number of replicate groups.
 
     Returns:
-        List of MarginEstimate objects with full uncertainty quantification.
+        List of MarginCalibration objects, one per feature.
 
     Raises:
         ValueError: If ``method`` is not a known scheme, or ``n_replicates`` is
@@ -458,8 +414,11 @@ def get_margin_estimates(
         raw = raw_margins[feature]
         variance = variances[feature]
         std_error = float(np.sqrt(variance)) if not np.isnan(variance) else np.nan
-        ci_lower, ci_upper = _interval_from_std_error(
-            raker, feature, estimate, std_error, confidence_level
+        gap = estimate - target
+        gap_ratio = (
+            abs(gap) / std_error
+            if np.isfinite(std_error) and std_error > 0
+            else float("nan")
         )
 
         # Compute bias reduction
@@ -471,13 +430,13 @@ def get_margin_estimates(
             bias_reduction = 0.0
 
         estimates.append(
-            MarginEstimate(
+            MarginCalibration(
                 feature=feature,
                 target=target,
                 estimate=estimate,
+                gap=gap,
                 std_error=std_error,
-                ci_lower=ci_lower,
-                ci_upper=ci_upper,
+                gap_ratio=gap_ratio,
                 raw_estimate=raw,
                 bias_reduction=bias_reduction,
             )
@@ -672,23 +631,23 @@ def compute_weight_efficiency(raker: OnlineRakingSGD) -> float:
     return float(ess / raker._n_obs)
 
 
-def summarize_raking_results(
-    raker: OnlineRakingSGD,
-    confidence_level: float = 0.95,
-) -> dict:
+def summarize_raking_results(raker: OnlineRakingSGD) -> dict:
     """Generate a comprehensive summary of raking results.
 
     Provides all key metrics and diagnostics in a single report.
 
+    The margin section reports calibration rather than confidence intervals:
+    see :class:`MarginCalibration` for why a raked margin does not carry
+    sampling uncertainty about the target it was aimed at.
+
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
-        confidence_level: Confidence level for intervals.
 
     Returns:
         Dictionary with complete summary statistics.
     """
     feasibility = check_target_feasibility(raker)
-    margin_estimates = get_margin_estimates(raker, confidence_level)
+    margin_estimates = margin_calibration(raker)
 
     return {
         "n_observations": raker._n_obs,
@@ -703,9 +662,9 @@ def summarize_raking_results(
                 "feature": est.feature,
                 "target": est.target,
                 "estimate": est.estimate,
+                "gap": est.gap,
                 "std_error": est.std_error,
-                "ci_lower": est.ci_lower,
-                "ci_upper": est.ci_upper,
+                "gap_ratio": est.gap_ratio,
                 "raw_estimate": est.raw_estimate,
                 "bias_reduction_pct": est.bias_reduction,
             }

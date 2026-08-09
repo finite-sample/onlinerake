@@ -47,8 +47,12 @@ jobs:
     - name: Run pydoclint docstring checking
       run: uv run pydoclint onlinerake/
 
+    # Every test file except the Monte Carlo studies, which get their own step.
+    # Naming files explicitly is how test_new_features.py,
+    # test_theoretical_features.py, test_model_assisted.py and
+    # test_mwu_ipf_equivalence.py went unrun in CI entirely.
     - name: Run tests with coverage
-      run: uv run pytest tests/test_onlinerake.py tests/test_margin_variance.py -v --cov=onlinerake --cov-report=term --cov-report=xml
+      run: uv run pytest tests/ --ignore=tests/test_inference_coverage.py -v --cov=onlinerake --cov-report=term --cov-report=xml
 
     # Monte Carlo studies of the shipped confidence sequence, margin interval
     # and GREG estimator. Separate step because it is minutes rather than

@@ -31,7 +31,7 @@ from onlinerake import (
     OnlineRakingSGD,
     Targets,
     check_target_feasibility,
-    get_margin_estimates,
+    margin_calibration,
     robbins_monro_schedule,
     summarize_raking_results,
 )
@@ -224,19 +224,24 @@ def main():
     # Uncertainty Quantification
     # =========================================================================
     print("-" * 70)
-    print("Uncertainty Quantification (SGD with 95% CI)")
+    print("Calibration quality (SGD)")
     print("-" * 70)
     print()
 
-    estimates = get_margin_estimates(sgd, confidence_level=0.95)
+    # Not a confidence interval: a raked margin is calibrated toward a target
+    # the caller supplied as known, so it carries no sampling uncertainty about
+    # it. What an online raker can miss is the target itself, and gap/se says
+    # by how much relative to the margin's own run-to-run noise.
+    estimates = margin_calibration(sgd)
     print(
-        f"{'Feature':<12} {'Target':>8} {'Estimate':>10} {'SE':>8} {'95% CI':>20} {'Bias Red.':>10}"
+        f"{'Feature':<12} {'Target':>8} {'Estimate':>10} {'Gap':>9} {'SE':>8} {'gap/se':>8} {'Bias Red.':>10}"
     )
     print("-" * 70)
     for est in estimates:
-        ci_str = f"[{est.ci_lower:.3f}, {est.ci_upper:.3f}]"
         print(
-            f"{est.feature:<12} {est.target:>8.3f} {est.estimate:>10.3f} {est.std_error:>8.3f} {ci_str:>20} {est.bias_reduction:>9.1f}%"
+            f"{est.feature:<12} {est.target:>8.3f} {est.estimate:>10.3f} "
+            f"{est.gap:>+9.4f} {est.std_error:>8.4f} {est.gap_ratio:>8.2f} "
+            f"{est.bias_reduction:>9.1f}%"
         )
     print()
 

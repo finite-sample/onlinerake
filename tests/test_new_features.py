@@ -6,12 +6,11 @@ import pytest
 from onlinerake import BatchIPF, OnlineRakingMWU, OnlineRakingSGD, Targets
 from onlinerake.diagnostics import (
     check_target_feasibility,
-    compute_confidence_interval,
     compute_design_effect,
     compute_weight_efficiency,
     estimate_margin_std_error,
     estimate_margin_variance,
-    get_margin_estimates,
+    margin_calibration,
     summarize_raking_results,
 )
 from onlinerake.learning_rate import (
@@ -255,29 +254,32 @@ class TestDiagnostics:
         assert se > 0
         assert se < 0.1
 
-    def test_confidence_interval(self):
-        """Test confidence interval computation."""
-        ci = compute_confidence_interval(self.raker, "age", 0.95)
-        lower, upper = ci
+    def test_calibration_gap_is_exact_and_the_ratio_is_finite(self):
+        """Replaces test_confidence_interval, which could not fail.
 
-        assert lower < upper
-        assert 0 <= lower <= 1
-        assert 0 <= upper <= 1
-
-        # Estimate should be within CI
-        margins = self.raker.margins
-        assert lower <= margins["age"] <= upper
+        It asserted ``lower < upper``, both bounds in [0, 1], and that the
+        estimate lay inside its own interval -- all true of any interval of the
+        form ``x +/- z*se``. The interval it tested has been removed; a raked
+        margin is aimed at a target supplied as known.
+        """
+        (cal,) = [c for c in margin_calibration(self.raker) if c.feature == "age"]
+        assert cal.gap == pytest.approx(cal.estimate - cal.target)
+        assert cal.std_error >= 0
+        assert np.isfinite(cal.gap_ratio)
 
     def test_margin_estimates(self):
         """Test comprehensive margin estimates."""
-        estimates = get_margin_estimates(self.raker, confidence_level=0.95)
+        estimates = margin_calibration(self.raker)
 
         assert len(estimates) == 3  # Three features
         for est in estimates:
             assert est.feature in ["age", "gender", "education"]
             assert 0 <= est.estimate <= 1
             assert est.std_error > 0
-            assert est.ci_lower <= est.estimate <= est.ci_upper
+            # gap is exact arithmetic; the ratio is what tells a user whether
+            # calibration arrived relative to the margin's own noise.
+            assert est.gap == pytest.approx(est.estimate - est.target)
+            assert est.gap_ratio >= 0
 
     def test_feasibility_check(self):
         """Test target feasibility checking."""
@@ -416,8 +418,8 @@ class TestEdgeCases:
         se = estimate_margin_std_error(raker, "age")
         assert np.isnan(se)
 
-        ci = compute_confidence_interval(raker, "age")
-        assert np.isnan(ci[0]) and np.isnan(ci[1])
+        (cal,) = margin_calibration(raker)
+        assert np.isnan(cal.std_error)
 
     def test_batch_ipf_empty_data(self):
         """Test batch IPF with empty data."""

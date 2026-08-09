@@ -18,7 +18,7 @@ from onlinerake import OnlineRakingMWU, OnlineRakingSGD, Targets
 from onlinerake.diagnostics import (
     estimate_margin_std_error,
     estimate_margin_variance,
-    get_margin_estimates,
+    margin_calibration,
 )
 
 TARGETS = {"female": 0.52, "college": 0.35, "young": 0.30}
@@ -154,14 +154,14 @@ class TestArgumentsAreChecked:
         with pytest.raises(ValueError, match="at least 2"):
             estimate_margin_variance(raker, "college", n_replicates=n_replicates)
 
-    def test_get_margin_estimates_checks_them_too(self):
+    def test_margin_calibration_checks_them_too(self):
         """It reaches the replication directly, so it has to check for itself."""
         raker = _fitted()
         with pytest.raises(ValueError, match="method must be one of"):
-            get_margin_estimates(raker, method="bootstrap")
+            margin_calibration(raker, method="bootstrap")
 
 
-class TestGetMarginEstimates:
+class TestMarginCalibration:
     """One replication pass has to give what per-feature calls would give."""
 
     def test_it_agrees_with_the_per_feature_call(self):
@@ -173,7 +173,7 @@ class TestGetMarginEstimates:
         replay the same subsamples, so they must agree exactly.
         """
         raker = _fitted()
-        estimates = {est.feature: est for est in get_margin_estimates(raker)}
+        estimates = {est.feature: est for est in margin_calibration(raker)}
         for feature in raker._feature_names:
             assert estimates[feature].std_error == estimate_margin_std_error(
                 raker, feature
