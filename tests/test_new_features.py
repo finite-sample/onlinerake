@@ -431,13 +431,20 @@ class TestEdgeCases:
         assert np.isnan(ipf.loss)
 
     def test_single_observation(self):
-        """Test with single observation."""
+        """Test with single observation.
+
+        The variance assertion was ``var >= 0`` with the comment "Should be
+        defined". It is not defined: one observation cannot be split into two
+        replicate groups, so there is nothing to measure a spread over. It
+        previously returned 0.0, which passed this assertion and produced a
+        zero-width 95% interval downstream.
+        """
         targets = Targets(age=0.5)
         raker = OnlineRakingSGD(targets)
         raker.partial_fit({"age": 1})
 
         var = estimate_margin_variance(raker, "age")
-        assert var >= 0  # Should be defined
+        assert np.isnan(var)
 
         report = check_target_feasibility(raker)
         # Single observation may not be feasible

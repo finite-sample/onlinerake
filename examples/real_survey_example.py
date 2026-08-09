@@ -234,14 +234,14 @@ def main():
     # by how much relative to the margin's own run-to-run noise.
     estimates = margin_calibration(sgd)
     print(
-        f"{'Feature':<12} {'Target':>8} {'Estimate':>10} {'Gap':>9} {'SE':>8} {'gap/se':>8} {'Bias Red.':>10}"
+        f"{'Feature':<12} {'Target':>8} {'Estimate':>10} {'Gap':>9} {'SE':>8} {'gap/se':>8} {'unclosed':>10}"
     )
     print("-" * 70)
     for est in estimates:
         print(
             f"{est.feature:<12} {est.target:>8.3f} {est.estimate:>10.3f} "
             f"{est.gap:>+9.4f} {est.std_error:>8.4f} {est.gap_ratio:>8.2f} "
-            f"{est.bias_reduction:>9.1f}%"
+            f"{est.unclosed_fraction:>10.4f}"
         )
     print()
 

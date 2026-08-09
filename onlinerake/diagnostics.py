@@ -64,12 +64,28 @@ class MarginCalibration:
         gap: ``estimate - target``. Exact, not estimated.
         std_error: Replication standard error of the margin -- how much it
             moves across recalibrated subsamples.
-        gap_ratio: ``|gap| / std_error``. Below about one, the margin has
-            arrived to within its own run-to-run noise. Well above one, the
-            raker stopped short by more than the noise, and any inference built
-            on this margin inherits that shortfall. Raising
-            ``learning_rate * n_sgd_steps`` shrinks the gap roughly in
-            proportion.
+        gap_ratio: ``|gap| / std_error`` -- the shortfall in units of the
+            margin's own run-to-run spread, and nothing more. **It carries no
+            absolute threshold.** At fixed calibration effort the numerator is
+            flat in the stream length while the denominator falls, so the ratio
+            rises with ``n``: measured 3.26, 4.56, 7.02, 16.26 at n = 250,
+            1000, 4000, 12000 on an unchanged raker. Contamination of a
+            downstream estimate does rise with ``n`` too -- its bias stays put
+            while its own spread shrinks -- so the direction is real, but the
+            scale is not shared: at n = 4000 this ratio read 11.78 where the
+            downstream bias was 0.97 of that estimate's standard error. Use it
+            to compare runs, not against a cutoff.
+
+            An earlier version of this docstring said "below about one, the
+            margin has arrived". That was false, and it came from validating the
+            ratio by sweeping ``learning_rate * n_sgd_steps`` at fixed ``n``,
+            where it does fall neatly to one, without ever sweeping ``n``.
+        unclosed_fraction: ``|gap| / |raw_estimate - target|`` -- the share of
+            the initial miscalibration the raker did **not** remove. Both terms
+            are gaps, so unlike ``gap_ratio`` this does not move with the stream
+            length, which makes it the honest answer to "did the raker
+            converge". ``nan`` when the raw margin already sat on the target and
+            there was nothing to close.
         raw_estimate: Unweighted sample proportion.
         bias_reduction: Percentage reduction in distance to target from
             reweighting.
@@ -81,6 +97,7 @@ class MarginCalibration:
     gap: float
     std_error: float
     gap_ratio: float
+    unclosed_fraction: float
     raw_estimate: float
     bias_reduction: float
 
@@ -247,7 +264,11 @@ def _replication_variances(
         dict: Estimated variance per feature.
     """
     if raker._n_obs < 2:
-        return dict.fromkeys(raker._feature_names, 0.0)
+        # NaN, not 0.0. A single observation cannot be split into two groups, so
+        # the variance is unestimable -- and zero variance is a claim that the
+        # estimator cannot vary, which produced a zero-width 95% interval from
+        # one draw. That is the proportion_confint(0, 20) -> (0.0, 0.0) defect.
+        return dict.fromkeys(raker._feature_names, float("nan"))
 
     margins, groups = _replicate_margins(raker, method, n_replicates)
     deviations = margins - margins.mean(axis=0)
@@ -420,6 +441,8 @@ def margin_calibration(
             if np.isfinite(std_error) and std_error > 0
             else float("nan")
         )
+        initial_gap = abs(raw - target)
+        unclosed_fraction = abs(gap) / initial_gap if initial_gap > 0 else float("nan")
 
         # Compute bias reduction
         raw_bias = abs(raw - target)
@@ -437,6 +460,7 @@ def margin_calibration(
                 gap=gap,
                 std_error=std_error,
                 gap_ratio=gap_ratio,
+                unclosed_fraction=unclosed_fraction,
                 raw_estimate=raw,
                 bias_reduction=bias_reduction,
             )
@@ -665,6 +689,7 @@ def summarize_raking_results(raker: OnlineRakingSGD) -> dict:
                 "gap": est.gap,
                 "std_error": est.std_error,
                 "gap_ratio": est.gap_ratio,
+                "unclosed_fraction": est.unclosed_fraction,
                 "raw_estimate": est.raw_estimate,
                 "bias_reduction_pct": est.bias_reduction,
             }

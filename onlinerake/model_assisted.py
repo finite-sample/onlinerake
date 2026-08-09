@@ -762,8 +762,8 @@ def model_assisted_variance(
         n_replicates: Number of groups, capped at the number of observations.
 
     Returns:
-        float: Estimated variance of ``raker.model_assisted_estimate``. ``nan``
-        with no observations, and ``0.0`` with one.
+        float: Estimated variance of ``raker.model_assisted_estimate``, or
+        ``nan`` below two observations, where it is unestimable.
 
     Raises:
         ValueError: If ``method`` is unknown or ``n_replicates`` is below two.
@@ -772,10 +772,10 @@ def model_assisted_variance(
 
     _check_replication(method, n_replicates)
     n = raker._n_obs
-    if n == 0:
-        return float("nan")
     if n < 2:
-        return 0.0
+        # Unestimable, not zero. Returning 0.0 here gave a zero-width 95%
+        # interval from a single observation.
+        return float("nan")
 
     groups = max(2, min(int(n_replicates), n))
     assignment = np.arange(n) % groups

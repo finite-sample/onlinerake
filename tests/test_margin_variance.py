@@ -126,16 +126,50 @@ class TestDegenerateSamples:
         assert np.isnan(estimate_margin_variance(raker, "college"))
         assert np.isnan(estimate_margin_std_error(raker, "college"))
 
-    def test_one_observation_gives_zero(self):
-        """One observation cannot be split into two groups.
+    def test_one_observation_gives_nan(self):
+        """One observation cannot be split into two groups, so nothing is known.
 
-        Zero rather than NaN, because the answer to "how much does this move
-        across replicates" is that there are no replicates, not that the
-        question is ill-posed.
+        This asserted ``== 0.0`` and argued for it: the answer to "how much does
+        this move across replicates" is that there are no replicates, not that
+        the question is ill-posed. That reasoning does not survive the variance
+        being used to build an interval. Zero variance is a claim that the
+        estimator *cannot* vary, and it produced a zero-width 95% interval from
+        a single observation -- which is exactly the
+        ``proportion_confint(0, 20) -> (0.0, 0.0)`` defect this project logged
+        as a finding against statsmodels.
+
+        An unestimable variance is NaN.
         """
         raker = OnlineRakingSGD(Targets(**TARGETS))
         raker.partial_fit({"female": 1, "college": 0, "young": 1})
-        assert estimate_margin_variance(raker, "college") == 0.0
+        assert np.isnan(estimate_margin_variance(raker, "college"))
+        assert np.isnan(estimate_margin_std_error(raker, "college"))
+
+    def test_one_observation_does_not_yield_a_zero_width_interval(self):
+        """The consequence, asserted directly rather than left implied."""
+        from onlinerake.model_assisted import (
+            ModelAssistedRaker,
+            ModelAssistedTargets,
+            model_assisted_confidence_interval,
+            model_assisted_variance,
+        )
+        from onlinerake.models import LinearOutcomeModel
+
+        model = LinearOutcomeModel().fit(
+            np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]), np.array([0.0, 1.0])
+        )
+        raker = ModelAssistedRaker(
+            ModelAssistedTargets(Targets(**TARGETS), {"y_hat": 0.5}), model
+        )
+        raker.partial_fit({"female": 1, "college": 0, "young": 1}, outcome=1)
+
+        assert np.isnan(model_assisted_variance(raker))
+        low, high = model_assisted_confidence_interval(raker)
+        assert np.isnan(low) and np.isnan(high), (
+            f"one observation produced the interval ({low}, {high}); a "
+            "zero-width 95% interval claims perfect precision from a single "
+            "draw"
+        )
 
 
 class TestArgumentsAreChecked:
@@ -178,3 +212,58 @@ class TestMarginCalibration:
             assert estimates[feature].std_error == estimate_margin_std_error(
                 raker, feature
             )
+
+
+class TestTheDiagnosticsMoveOnTheRightAxes:
+    """Each diagnostic is checked on BOTH axes, because one axis hid a defect.
+
+    ``gap_ratio`` was originally documented as "below about one, the margin has
+    arrived". That claim came from sweeping ``learning_rate * n_sgd_steps`` at a
+    fixed stream length, where the ratio does fall neatly toward one. Sweeping
+    the stream length instead shows the numerator flat and the denominator
+    falling, so the ratio climbs -- 4.12, 8.11, 13.85 at n = 250, 1000, 4000 on
+    an unchanged raker. A diagnostic validated on one axis is how that shipped.
+    """
+
+    @staticmethod
+    def _fit(n, lr, steps, seed):
+        rng = np.random.default_rng(seed)
+        raker = OnlineRakingSGD(Targets(**TARGETS), learning_rate=lr, n_sgd_steps=steps)
+        accepted = 0
+        while accepted < n:
+            obs = {
+                "female": int(rng.random() < 0.51),
+                "college": int(rng.random() < 0.35),
+                "young": int(rng.random() < 0.40),
+            }
+            # Selection on college, so raking has real work to do.
+            if rng.random() < (0.75 if obs["college"] else 0.35):
+                raker.partial_fit(obs)
+                accepted += 1
+        return [
+            c
+            for c in margin_calibration(raker, n_replicates=5)
+            if c.feature == "college"
+        ][0]
+
+    def test_both_diagnostics_fall_as_calibration_effort_rises(self):
+        """Axis 1: more effort closes more of the gap, on either measure."""
+        weak = self._fit(600, 5, 3, seed=11)
+        strong = self._fit(600, 20, 10, seed=11)
+        assert strong.unclosed_fraction < weak.unclosed_fraction
+        assert strong.gap_ratio < weak.gap_ratio
+
+    def test_unclosed_fraction_does_not_move_with_the_stream_length(self):
+        """Axis 2: the scale-free measure stays put where the ratio does not.
+
+        This is the property ``gap_ratio`` lacks, and the reason for adding a
+        second measure rather than reinterpreting the first.
+        """
+        short = self._fit(400, 5, 3, seed=23)
+        long = self._fit(2400, 5, 3, seed=23)
+
+        # Same raker settings, six times the stream: the share of the initial
+        # miscalibration left unclosed should be broadly unchanged.
+        assert long.unclosed_fraction == pytest.approx(short.unclosed_fraction, rel=0.6)
+        # while the ratio climbs, because its denominator shrinks with n.
+        assert long.gap_ratio > short.gap_ratio
