@@ -50,6 +50,12 @@ jobs:
     - name: Run tests with coverage
       run: uv run pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term --cov-report=xml
 
+    # Monte Carlo studies of the shipped confidence sequence, margin interval
+    # and GREG estimator. Separate step because it is minutes rather than
+    # seconds, and because a coverage study that CI never runs is not a test.
+    - name: Run Monte Carlo inference studies
+      run: uv run pytest tests/test_inference_coverage.py -v
+
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.12'
       uses: codecov/codecov-action@v4
