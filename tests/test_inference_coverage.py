@@ -609,6 +609,9 @@ class TestConfidenceSequenceAnytimeValidity:
         reports itself as tested, which is worse than leaving it untested. Two
         cases: an interval that never covers, and one that covers at 0.80 when
         it claims 0.95.
+
+        The rates are constructed exactly rather than sampled, so the verdicts
+        do not depend on a seed or on which tier the file is running at.
         """
         reps = reps_for()
         with pytest.raises(AssertionError):
@@ -616,14 +619,18 @@ class TestConfidenceSequenceAnytimeValidity:
                 np.zeros(reps, dtype=bool), CONFIDENCE, "never covers"
             )
 
-        rng = np.random.default_rng(3)
-        eighty = rng.random(reps) < 0.80
+        def at_rate(rate: float) -> np.ndarray:
+            hits = np.zeros(reps, dtype=bool)
+            hits[: round(rate * reps)] = True
+            return hits
+
         with pytest.raises(AssertionError):
-            assert_coverage_floor(eighty, CONFIDENCE, "an 80% interval sold as 95%")
+            assert_coverage_floor(
+                at_rate(0.80), CONFIDENCE, "an 80% interval sold as 95%"
+            )
 
         # And it does not fire on a rate that really is nominal.
-        nominal = rng.random(reps) < CONFIDENCE
-        assert_coverage_floor(nominal, CONFIDENCE, "a genuine 95% interval")
+        assert_coverage_floor(at_rate(CONFIDENCE), CONFIDENCE, "a genuine 95% interval")
 
 
 # ----------------------------------------------------------------------------
