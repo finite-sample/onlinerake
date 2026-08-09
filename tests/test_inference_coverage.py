@@ -1,6 +1,6 @@
 """Monte Carlo studies of the inference onlinerake ships.
 
-Three claims in this package were statements about sampling behaviour, and until
+Three claims in this package were statements about sampling behavior, and until
 this file existed not one of them had been run over a replicate loop. **Two of
 the three did not survive, and the functions carrying them have been removed.**
 This file is what remains: the study of the one that held, plus the study of the

@@ -5,45 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-08-09
 
-### Changed
-- **`estimate_margin_variance()` is now a replication estimator.** It used to
-  return `p(1-p)/ESS` for a binary margin and a weighted sample variance over
-  ESS for a continuous one — the sampling variance of an *unweighted* mean. The
-  margin it is applied to has been calibrated toward a fixed target, so it varies
-  far less than that: measured over 100 replicates of a 500-observation stream,
-  the old formula reported 0.02340 against an actual spread of 0.00528, a factor
-  of 4.4. It now re-runs the calibration on replicate subsamples and reads the
-  spread off them, which measures 0.966 of the observed spread.
-  `estimate_margin_std_error()`, `compute_confidence_interval()` and
-  `get_margin_estimates()` inherit the change.
-- The binary and continuous branches of `estimate_margin_variance()` are gone; a
-  replicate reports whatever the raker reports, so both use one path.
+A major version because public API is removed. Two features that put confidence
+intervals on a raked margin are gone, and the inference they were attempting now
+lives on the quantity that can carry it.
+
+### Removed
+- **`diagnostics.compute_confidence_interval()`** and
+  **`streaming_inference.compute_confidence_sequence()`**, along with
+  `ConfidenceSequence` and `MarginEstimate`.
+
+  R's `survey` reports a standard error of **exactly zero** for a raking
+  variable, because after calibration the margin *is* the target the caller
+  supplied as known. There is no sampling uncertainty about a number you
+  supplied, so neither interval was estimating anything, and a better variance
+  estimator would not have changed that.
+
+  Both were also wrong on their own terms before that argument applies. The
+  fixed-n interval used `p(1-p)/ESS`, the variance of an *unweighted*
+  proportion, measured at 4.43x the margin's actual spread; with an honest width
+  its coverage fell from 1.000 to 0.210. The sequence was documented as
+  "time-uniform ... valid at all stopping times" and cited a betting
+  construction it did not implement — the code was a plug-in Hoeffding-style
+  boundary — and measured 0.470 anytime coverage at `OnlineRakingMWU`'s default.
+- **`summarize_raking_results()` no longer takes `confidence_level`.** Its
+  margin section reports calibration, which has no confidence level.
 
 ### Added
-- `method` and `n_replicates` arguments on `estimate_margin_variance()`,
-  `estimate_margin_std_error()`, `compute_confidence_interval()` and
-  `get_margin_estimates()`. `method="random_groups"` (default) calibrates
-  `n_replicates` disjoint groups of the stream and costs less than the original
-  fit; `method="jackknife"` is the delete-a-group jackknife and costs
-  `n_replicates` full refits.
-- `tests/test_margin_variance.py` covering the contract around the replication:
-  that it leaves the raker it cloned untouched, that both schemes run, and that
-  the arguments are checked.
+- **`diagnostics.margin_calibration()` -> `MarginCalibration`**, reporting what
+  is actually true about a raked margin: `gap = estimate - target`, which is
+  exact arithmetic rather than an estimate; a replication `std_error`;
+  `gap_ratio`, the gap in units of that spread; and `unclosed_fraction`, the
+  share of the initial miscalibration the raker did not remove.
 
-### Known issues
-- A 95% `compute_confidence_interval()` covers its target 0.210 of the time over
-  that same study, because the raked margin carries a calibration residual of
-  +0.0146 — 2.8 times its own sampling spread — that does not shrink with the
-  stream. The interval covered 1.000 before only because it was four times too
-  wide. The residual is the tracking lag of the raker's fixed-gain update,
-  measured proportional to `1 / (learning_rate * n_sgd_steps)`, so closing it is
-  a change to the raking algorithm rather than to `diagnostics`.
-- `streaming_inference.compute_confidence_sequence()` is still documented as
-  time-uniform and measures 0.470 anytime coverage under `OnlineRakingMWU` at its
-  default learning rate. Same root cause: a width that shrinks around a centre
-  that does not.
+  `gap_ratio` carries **no absolute threshold** — at fixed calibration effort
+  its numerator is flat in the stream length while its denominator falls, so it
+  rises with `n` (3.26, 4.56, 7.02, 16.26 at n = 250 / 1000 / 4000 / 12000 on an
+  unchanged raker). `unclosed_fraction` is the scale-free companion and does not
+  move with `n`.
+- **Inference for the GREG estimate**: `model_assisted_variance()`,
+  `model_assisted_std_error()` and `model_assisted_confidence_interval()`.
+  `ModelAssistedRaker.model_assisted_estimate` is the one genuine outcome
+  estimator in the package and had no variance estimator at all. Signatures
+  mirror the margin functions. The interval is conditional on the outcome model,
+  which is fixed across replicates by design.
+- **Replication variance** underneath both: `method="random_groups"` (default)
+  calibrates `n_replicates` disjoint groups and costs less than the original
+  fit; `method="jackknife"` is delete-a-group and costs `n_replicates` full
+  refits. Each replicate re-runs the whole calibration, which is `survey`'s own
+  position — it refuses to calibrate a design after replicate weights exist.
+
+### Fixed
+- **`_z_score()` returned the 95% multiplier for any level outside a
+  three-entry table.** It fell through to a `scipy` import, and scipy is not a
+  dependency of this package, so `except ImportError` returned `Z_SCORES[0.95]`.
+  Asking for an 80% interval silently produced a 95% one. Now
+  `statistics.NormalDist().inv_cdf`, which is standard library and exact, with a
+  range check.
+- **A variance of `0.0` below two observations produced a zero-width 95%
+  interval** from a single draw. Now `nan`, which is what an unestimable
+  variance is. Two tests had asserted the `0.0` and so encoded the defect.
+- `estimate_path_dependent_variance()` carried the same `p(1-p)/ESS` and now
+  uses the replication variance.
+- CI ran four test files never at all — `test_new_features`,
+  `test_theoretical_features`, `test_model_assisted`, `test_mwu_ipf_equivalence`
+  — because the step named files explicitly. It now runs the directory.
+
+### Known limitations
+- The replication standard error understates the margin's true spread by roughly
+  30% (0.00404 systematic and 0.00367 randomized against an actual 0.00564 over
+  25 streams at n=800, G=10). It feeds a diagnostic rather than an interval, and
+  the same machinery applied to the GREG estimate is checked by a coverage study
+  that passes.
+- The calibration gap itself is the raker's tracking lag under a fixed-gain
+  update and scales as `1 / (learning_rate * n_sgd_steps)`. A decaying
+  Robbins-Monro schedule makes it *worse*, not better, because a shrinking step
+  cannot track a target that moves as new observations arrive.
 
 ## [1.4.0] - 2026-03-30
 

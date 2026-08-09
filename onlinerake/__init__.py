@@ -52,6 +52,8 @@ Note:
     Users must explicitly specify their features and target proportions.
 """
 
+from importlib.metadata import version as _metadata_version
+
 from .batch_ipf import BatchIPF
 from .convergence import (
     ConvergenceAnalysis,
@@ -198,4 +200,7 @@ __all__ = [
     "StreamingMRP",
 ]
 
-__version__ = "1.4.0"
+# Read from installed metadata rather than restated here. A literal in this
+# file is a second source of truth beside pyproject.toml, and the two drift
+# silently -- this one was still "1.4.0" while pyproject had moved on.
+__version__ = _metadata_version("onlinerake")

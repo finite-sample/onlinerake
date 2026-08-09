@@ -181,6 +181,21 @@ def _unfitted_copy[RakerT: "OnlineRakingSGD"](raker: RakerT) -> RakerT:
     replicate._prev_weights = None
     replicate.track_convergence = False
     replicate.compute_weight_stats = False
+
+    # The arrays are copied at the parent's full capacity, so everything past
+    # the replicate's own _n_obs is the parent's data. Every read in the package
+    # slices [:n], which makes that harmless -- but "harmless because I read
+    # every call site" is what an assertion is for, and a future vectorized
+    # operation that forgets the slice would silently mix parent rows into a
+    # replicate. Zeroing the tail turns that from a wrong number into an
+    # obviously wrong one.
+    for name in ("_features", "_weights", "_outcomes", "_predictions"):
+        array = getattr(replicate, name, None)
+        if isinstance(array, np.ndarray) and array.size:
+            array[...] = 0.0
+    flags = getattr(replicate, "_has_outcomes", None)
+    if isinstance(flags, np.ndarray) and flags.size:
+        flags[...] = False
     return replicate
 
 
@@ -210,8 +225,25 @@ def _replicate_margins(
 
     Observations are split into groups systematically -- observation ``i`` joins
     group ``i % groups`` -- which needs no random number generator and so makes
-    the variance estimate reproducible. Systematic and randomised grouping were
-    measured against the same 25 streams and agreed to within the study's noise.
+    the variance estimate reproducible.
+
+    An earlier version of this docstring claimed systematic and randomized
+    grouping "agreed to within the study's noise" over 25 streams. That was
+    never reproduced here. Measured, over 25 streams at n=800 and G=10:
+
+        systematic  i % G          SE 0.00404
+        randomized                 SE 0.00367
+        actual spread of the margin across streams   0.00564
+
+    Systematic is the wider of the two, so it is kept -- but **both understate
+    the margin's true spread by roughly 30%**, which is the more useful fact and
+    is stated rather than filed as a pass. A standard error 30% too small makes
+    ``MarginCalibration.gap_ratio`` about 40% too large, which is part of why
+    that ratio carries no absolute threshold.
+
+    The consequence is bounded: this variance now feeds only a diagnostic, not
+    an interval. The same machinery applied to the GREG estimate is a different
+    quantity, and that one is checked by a coverage study which passes.
 
     Args:
         raker: A fitted raker.

@@ -755,6 +755,13 @@ def model_assisted_variance(
     after replicate weights exist, because each replicate has to be calibrated
     in its own right.
 
+    **The interval is conditional on the outcome model.** The model is fitted in
+    batch and held fixed while calibration streams -- that is the package's
+    design, and ``self.model`` is only ever read here, never refitted -- so the
+    replicates vary the calibration but not the model. Uncertainty from having
+    estimated the model is therefore not in this number. Where the model was fit
+    on the same data being raked, treat the interval as optimistic.
+
     Args:
         raker: A fitted :class:`ModelAssistedRaker`.
         method: ``"random_groups"`` for disjoint groups, or ``"jackknife"`` for

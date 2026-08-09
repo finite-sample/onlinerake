@@ -16,6 +16,7 @@ import pytest
 
 from onlinerake import OnlineRakingMWU, OnlineRakingSGD, Targets
 from onlinerake.diagnostics import (
+    _unfitted_copy,
     estimate_margin_std_error,
     estimate_margin_variance,
     margin_calibration,
@@ -267,3 +268,48 @@ class TestTheDiagnosticsMoveOnTheRightAxes:
         assert long.unclosed_fraction == pytest.approx(short.unclosed_fraction, rel=0.6)
         # while the ratio climbs, because its denominator shrinks with n.
         assert long.gap_ratio > short.gap_ratio
+
+
+class TestReplicatesDoNotSeeParentData:
+    """The copied arrays are cleared past the replicate's own observations.
+
+    Every read in the package slices ``[:n]``, so leftover parent rows beyond
+    that are harmless today. This pins the clearing anyway, because "harmless
+    because I read every call site" stops being true the moment someone adds a
+    vectorized operation that forgets the slice.
+    """
+
+    def test_the_tail_of_every_copied_array_is_zeroed(self):
+        raker = OnlineRakingSGD(Targets(**TARGETS))
+        rng = np.random.default_rng(5)
+        for _ in range(60):
+            raker.partial_fit({name: int(rng.random() < 0.5) for name in TARGETS})
+
+        replicate = _unfitted_copy(raker)
+        assert replicate._n_obs == 0
+        # The parent's rows are non-zero, so a surviving tail would show up.
+        assert np.any(raker._features[: raker._n_obs] != 0)
+        assert not np.any(replicate._features)
+        assert not np.any(replicate._weights)
+
+
+def test_version_matches_pyproject():
+    """One source of truth for the version.
+
+    ``__init__.py`` used to restate the version as a literal beside
+    ``pyproject.toml``, and the two drifted -- the literal still said 1.4.0
+    after pyproject had moved. It now reads installed metadata, and this pins
+    the two together so a bump in one without the other fails here.
+
+    Worth knowing when this fails locally for no apparent reason: a stale
+    ``onlinerake.egg-info/`` left by an older build shadows the real metadata
+    and reports whatever version it was built at. Delete it and re-sync.
+    """
+    import tomllib
+    from pathlib import Path
+
+    import onlinerake
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    declared = tomllib.loads(pyproject.read_text())["project"]["version"]
+    assert onlinerake.__version__ == declared
