@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **`estimate_margin_variance()` is now a replication estimator.** It used to
+  return `p(1-p)/ESS` for a binary margin and a weighted sample variance over
+  ESS for a continuous one — the sampling variance of an *unweighted* mean. The
+  margin it is applied to has been calibrated toward a fixed target, so it varies
+  far less than that: measured over 100 replicates of a 500-observation stream,
+  the old formula reported 0.02340 against an actual spread of 0.00528, a factor
+  of 4.4. It now re-runs the calibration on replicate subsamples and reads the
+  spread off them, which measures 0.966 of the observed spread.
+  `estimate_margin_std_error()`, `compute_confidence_interval()` and
+  `get_margin_estimates()` inherit the change.
+- The binary and continuous branches of `estimate_margin_variance()` are gone; a
+  replicate reports whatever the raker reports, so both use one path.
+
+### Added
+- `method` and `n_replicates` arguments on `estimate_margin_variance()`,
+  `estimate_margin_std_error()`, `compute_confidence_interval()` and
+  `get_margin_estimates()`. `method="random_groups"` (default) calibrates
+  `n_replicates` disjoint groups of the stream and costs less than the original
+  fit; `method="jackknife"` is the delete-a-group jackknife and costs
+  `n_replicates` full refits.
+- `tests/test_margin_variance.py` covering the contract around the replication:
+  that it leaves the raker it cloned untouched, that both schemes run, and that
+  the arguments are checked.
+
+### Known issues
+- A 95% `compute_confidence_interval()` covers its target 0.210 of the time over
+  that same study, because the raked margin carries a calibration residual of
+  +0.0146 — 2.8 times its own sampling spread — that does not shrink with the
+  stream. The interval covered 1.000 before only because it was four times too
+  wide. The residual is the tracking lag of the raker's fixed-gain update,
+  measured proportional to `1 / (learning_rate * n_sgd_steps)`, so closing it is
+  a change to the raking algorithm rather than to `diagnostics`.
+- `streaming_inference.compute_confidence_sequence()` is still documented as
+  time-uniform and measures 0.470 anytime coverage under `OnlineRakingMWU` at its
+  default learning rate. Same root cause: a width that shrinks around a centre
+  that does not.
+
 ## [1.4.0] - 2026-03-30
 
 ### Added

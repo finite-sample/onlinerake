@@ -316,7 +316,7 @@ def assert_coverage_floor(
     the tolerance is the replicate count and not a number chosen here.
 
     Conservatism is not thereby exempted from scrutiny -- it is measured
-    directly by ``test_the_shipped_standard_error_is_four_times_the_estimator_spread``
+    directly by ``test_the_reported_standard_error_matches_the_estimator_spread``
     and by the width study, which is what a one-sided coverage gate cannot see.
 
     Args:
@@ -641,25 +641,31 @@ class TestConfidenceSequenceAnytimeValidity:
 class TestMarginConfidenceInterval:
     """Does the normal-approximation interval for a weighted margin hold up?
 
-    Measured verdict: **no**, and for two reasons that pull in opposite
-    directions and partly cancel, which is why the structural tests never saw
-    either.
+    Measured verdict: **the standard error does now; the interval still does
+    not.** The two halves used to pull in opposite directions and partly cancel,
+    which is why the structural tests never saw either.
 
-    * ``estimate_margin_std_error`` returns ``sqrt(p(1-p)/ESS)``, the standard
-      error of an unweighted proportion at the effective sample size. The
-      margin it is applied to has been *calibrated to a fixed target*, so its
-      sampling spread is far smaller than that. Measured over 100 replicates at
-      n=500: reported 0.02340 against an actual spread of 0.00528, a ratio of
-      **4.43**.
-    * the margin itself carries a calibration residual of **+0.0146**, which is
-      2.8 times its own sampling spread.
+    * ``estimate_margin_std_error`` re-runs the calibration on each of ten
+      disjoint groups of the stream and reads the spread off the group
+      estimates. Measured over 100 replicates at n=500: 0.00510 reported against
+      an actual spread of 0.00528, a ratio of **0.966**. It used to return
+      ``sqrt(p(1-p)/ESS)``, the standard error of an unweighted proportion at
+      the effective sample size, which measured 0.02340 -- a ratio of **4.43**
+      for a margin that had been *calibrated to a fixed target* and so varied
+      far less than a proportion does.
+    * the margin itself still carries a calibration residual of **+0.0146**,
+      which is 2.8 times its own sampling spread. Nothing in ``diagnostics``
+      can move that: it is the tracking lag of the raker's fixed-gain update,
+      and it is not smaller after 1000 observations than after 125.
 
-    A centre that is 2.8 sampling standard deviations off, inside an interval
-    4.4 times wider than it should be, covers **1.000** of the time. The
-    coverage number is therefore a measurement of the width, not of the
-    estimator: with zero misses in 100 replicates the study bounds the miss rate
-    only at 3/100 by the rule of three, so it cannot distinguish this interval
-    from one that never fails at all.
+    A centre 2.8 sampling standard deviations from its estimand, inside an
+    interval 4.4 times wider than it should be, covered **1.000** of the time --
+    a measurement of the width rather than of the estimator. With the width
+    honest the cancellation is gone and the same study measures **0.210**.
+    ``test_the_interval_covers_at_least_its_nominal_rate`` is left exactly as it
+    was written, and failing, because that is the finding: closing the gap means
+    making the raker converge, which is a change to the raking algorithm and not
+    to this module.
     """
 
     def test_the_interval_covers_at_least_its_nominal_rate(self):
@@ -682,24 +688,25 @@ class TestMarginConfidenceInterval:
             "the assertion"
         )
 
-    def test_the_shipped_standard_error_is_four_times_the_estimator_spread(self):
-        """The finding, and the reason coverage came out at 1.000.
+    def test_the_reported_standard_error_matches_the_estimator_spread(self):
+        """The gate the replication estimator was written to pass.
 
-        ``assert_se_calibrated`` compares the standard error the package
-        reports against the spread the estimator actually has across
-        replicates. Measured ratio 4.43, gated against a tolerance derived from
-        the replicate count. The interval is not conservative by design; it is
-        using the variance formula for a quantity other than the one it is
-        estimating.
+        ``assert_se_calibrated`` compares the standard error the package reports
+        against the spread the estimator actually has across replicates.
+        Measured ratio **0.966** -- 0.00510 reported against an observed 0.00528
+        -- inside the 0.222 the replicate count allows.
+
+        Before the replication estimator this test was written the other way
+        round, with ``pytest.raises``, and recorded a ratio of **4.43**:
+        ``estimate_margin_std_error`` returned ``sqrt(p(1-p)/ESS)``, the standard
+        error of an unweighted proportion, for a margin that had been calibrated
+        to a fixed target and so varied far less than one.
+
+        The assertion here is simcheck's, so raising ``SIMCHECK_REPS`` narrows
+        the band this has to sit in without editing a line.
         """
         study = run_sequence_study("sgd", n=500)
-        result = study.margin_result
-        with pytest.raises(AssertionError):
-            assert_se_calibrated(result, "diagnostics margin standard error")
-        assert result.se_ratio > 1.0, (
-            "the reported standard error should exceed the estimator's actual "
-            f"spread; measured ratio {result.se_ratio:.3f}"
-        )
+        assert_se_calibrated(study.margin_result, "diagnostics margin standard error")
 
     def test_the_calibrated_margin_is_not_centred_on_its_target(self):
         """The other half: a bias of +0.0146, 27 Monte Carlo standard errors out.
