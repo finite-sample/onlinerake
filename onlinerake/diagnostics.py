@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
+from statistics import NormalDist
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -103,7 +104,7 @@ def _check_replication(method: str, n_replicates: int) -> None:
         )
 
 
-def _unfitted_copy(raker: OnlineRakingSGD) -> OnlineRakingSGD:
+def _unfitted_copy[RakerT: "OnlineRakingSGD"](raker: RakerT) -> RakerT:
     """Build a raker of the same class and configuration, with no observations.
 
     Every replicate has to be calibrated by the *same* algorithm at the *same*
@@ -124,7 +125,9 @@ def _unfitted_copy(raker: OnlineRakingSGD) -> OnlineRakingSGD:
         raker: The fitted raker to copy.
 
     Returns:
-        OnlineRakingSGD: An unfitted raker of the same class and configuration.
+        RakerT: An unfitted raker of the same class and configuration. The
+        return type follows the argument, so a ``ModelAssistedRaker`` in
+        gives a ``ModelAssistedRaker`` out and its extra surface survives.
     """
     replicate = copy.copy(raker)
     for name, value in vars(raker).items():
@@ -334,20 +337,25 @@ def estimate_margin_std_error(
 def _z_score(confidence_level: float) -> float:
     """Normal quantile for a two-sided interval at this level.
 
+    Computed rather than looked up. The table only held 0.90, 0.95 and 0.99,
+    and every other level fell through to a scipy import that is not a
+    dependency of this package -- so the ``except ImportError`` branch returned
+    the 0.95 multiplier for *any* other level. Asking for an 80% interval
+    silently produced a 95% one. ``statistics.NormalDist`` is in the standard
+    library and exact.
+
     Args:
         confidence_level: Nominal coverage, for instance 0.95.
 
     Returns:
         The multiplier to apply to a standard error.
-    """
-    if confidence_level in Z_SCORES:
-        return Z_SCORES[confidence_level]
-    try:
-        from scipy import stats  # type: ignore[import-untyped]
 
-        return float(stats.norm.ppf(1 - (1 - confidence_level) / 2))
-    except ImportError:
-        return Z_SCORES[0.95]
+    Raises:
+        ValueError: If ``confidence_level`` is not strictly between 0 and 1.
+    """
+    if not 0.0 < confidence_level < 1.0:
+        raise ValueError(f"confidence_level must be in (0, 1), got {confidence_level}")
+    return float(NormalDist().inv_cdf(1 - (1 - confidence_level) / 2))
 
 
 def _interval_from_std_error(

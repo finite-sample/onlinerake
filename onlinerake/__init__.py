@@ -101,6 +101,9 @@ from .model_assisted import (
     PoststratificationCell,
     PoststratificationCells,
     StreamingMRP,
+    model_assisted_confidence_interval,
+    model_assisted_std_error,
+    model_assisted_variance,
 )
 from .models import (
     ExternalModelWrapper,
@@ -193,6 +196,9 @@ __all__ = [
     "ExternalModelWrapper",
     "ModelAssistedTargets",
     "ModelAssistedRaker",
+    "model_assisted_variance",
+    "model_assisted_std_error",
+    "model_assisted_confidence_interval",
     "PoststratificationCell",
     "PoststratificationCells",
     "StreamingMRP",

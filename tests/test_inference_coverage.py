@@ -58,10 +58,16 @@ from simcheck import (
 
 from onlinerake import OnlineRakingMWU, OnlineRakingSGD, Targets
 from onlinerake.diagnostics import (
+    _z_score,
     compute_confidence_interval,
     estimate_margin_std_error,
 )
-from onlinerake.model_assisted import ModelAssistedRaker, ModelAssistedTargets
+from onlinerake.model_assisted import (
+    ModelAssistedRaker,
+    ModelAssistedTargets,
+    model_assisted_confidence_interval,
+    model_assisted_std_error,
+)
 from onlinerake.models import LinearOutcomeModel
 from onlinerake.streaming_inference import compute_confidence_sequence
 
@@ -947,3 +953,111 @@ class TestModelAssistedEstimate:
             "the GREG adjustment should reduce bias against the plain weighted "
             f"mean; measured {greg.bias:+.5f} against {weighted.bias:+.5f}"
         )
+
+
+# ─── The GREG interval, which did not exist until now ──────────────────
+
+
+@functools.cache
+def run_greg_interval_study(
+    method: str = "random_groups",
+    n: int = 600,
+    reps: int | None = None,
+    seed: int = 0,
+) -> MonteCarloResult:
+    """Coverage of the interval around the GREG model-assisted estimate.
+
+    The estimate itself was already studied by :func:`run_greg_study` and is the
+    one claim in this file that survived. What had no study is its *interval*,
+    because until now the package reported no standard error for it at all.
+
+    This is the quantity that genuinely carries sampling uncertainty. A raked
+    margin does not: after calibration it is the target it was aimed at, which
+    is why R's ``survey`` reports a standard error of exactly zero for one and a
+    real standard error for an outcome estimated under the same weights.
+
+    Args:
+        method: Replication scheme, ``"random_groups"`` or ``"jackknife"``.
+        n: Stream length.
+        reps: Replicate count; defaults to the current simcheck tier.
+        seed: Seed for the replicate stream.
+
+    Returns:
+        MonteCarloResult: Estimates, reported standard errors and coverage flags.
+    """
+    reps = reps_for() if reps is None else reps
+    model = _fitted_model()
+    tau_pred = float(
+        sum(
+            probability
+            * model.predict(
+                np.array([[obs[name] for name in FEATURE_ORDER]], dtype=float)
+            )[0]
+            for obs, probability in _population_cells()
+        )
+    )
+
+    estimates, errors, covered = [], [], []
+    for child in np.random.SeedSequence(seed).spawn(reps):
+        rng = np.random.default_rng(child)
+        raker = ModelAssistedRaker(
+            ModelAssistedTargets(Targets(**POPULATION), {"y_hat": tau_pred}),
+            model,
+        )
+        for obs in _stream(rng, n):
+            raker.partial_fit(
+                obs, outcome=int(rng.random() < _outcome_probability(obs))
+            )
+        lower, upper = model_assisted_confidence_interval(
+            raker, CONFIDENCE, method=method
+        )
+        estimates.append(raker.model_assisted_estimate)
+        errors.append(model_assisted_std_error(raker, method=method))
+        covered.append(bool(lower <= POPULATION_MEAN_OUTCOME <= upper))
+
+    return MonteCarloResult(
+        estimates=np.asarray(estimates, dtype=float),
+        standard_errors=np.asarray(errors, dtype=float),
+        covered=np.asarray(covered, dtype=bool),
+        rejected=None,
+        truth=POPULATION_MEAN_OUTCOME,
+    )
+
+
+class TestModelAssistedInterval:
+    """Does the new GREG interval cover, and is its standard error honest?
+
+    The estimate was already known to be unbiased. An interval can still fail in
+    two ways around an unbiased centre -- a standard error that does not match
+    the estimator's spread, and a coverage rate that misses -- so both are gated
+    rather than one being inferred from the other.
+    """
+
+    def test_the_reported_standard_error_matches_the_estimator_spread(self) -> None:
+        """The interval's width has to be the right size, not merely non-zero."""
+        study = run_greg_interval_study()
+        assert_se_calibrated(study, label="GREG standard error, random groups")
+
+    def test_the_interval_covers_at_its_nominal_rate(self) -> None:
+        """The registered claim for the quantity that deserves one."""
+        study = run_greg_interval_study()
+        assert_coverage_floor(study.covered, CONFIDENCE, "GREG interval, random groups")
+
+    def test_the_jackknife_scheme_also_covers(self) -> None:
+        """Both replication schemes are offered, so both are gated."""
+        study = run_greg_interval_study(method="jackknife")
+        assert_coverage_floor(study.covered, CONFIDENCE, "GREG interval, jackknife")
+
+    def test_an_interval_shrunk_below_its_level_is_caught(self) -> None:
+        """The negative control, without which the two gates above prove nothing.
+
+        The same replicates, with each interval shrunk to the width an 80%
+        interval would have. The ratio is derived from the normal quantiles
+        rather than picked, so the control cannot drift.
+        """
+        study = run_greg_interval_study()
+        shrink = _z_score(0.80) / _z_score(CONFIDENCE)
+        half = shrink * _z_score(CONFIDENCE) * study.standard_errors
+        narrow = np.abs(study.estimates - POPULATION_MEAN_OUTCOME) <= half
+        with pytest.raises(AssertionError):
+            assert_coverage_floor(narrow, CONFIDENCE, "deliberately narrow")
