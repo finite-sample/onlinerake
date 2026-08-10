@@ -815,9 +815,9 @@ def run(args: argparse.Namespace) -> None:
             g2_mean=("g2", "mean"),
             g2_se=(
                 "g2",
-                lambda x: float(np.std(x, ddof=1) / math.sqrt(len(x)))
-                if len(x) > 1
-                else 0.0,
+                lambda x: (
+                    float(np.std(x, ddof=1) / math.sqrt(len(x))) if len(x) > 1 else 0.0
+                ),
             ),
             ess_mean=("ess", "mean"),
             time_mean=("runtime_seconds", "mean"),
