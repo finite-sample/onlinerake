@@ -32,7 +32,25 @@ lives on the quantity that can carry it.
 - **`summarize_raking_results()` no longer takes `confidence_level`.** Its
   margin section reports calibration, which has no confidence level.
 
+### Changed
+- **Every function taking a replication `method` now defaults to `"auto"`**,
+  which picks jackknife when the replicate size `n/G` is below 100 and random
+  groups at or above it. Random groups scales the spread among `G` disjoint
+  groups by `1/(G(G-1))`, which assumes the margin's variance goes as `1/n`; its
+  replicates hold `n/G` observations, which is where that assumption fails.
+  Jackknife replicates hold `n(1 - 1/G)` and stay in the safe region. See the
+  measurements under Known limitations.
+
+  The rule also bounds its own cost. Both schemes are linear in `n` and
+  jackknife refits roughly `9x` the rows, so jackknife gets *more* expensive
+  exactly where the rule stops choosing it. Cost peaks at the threshold (0.65 s
+  at n = 600) and falls after, against 8.97 s for always-jackknife at n = 4800.
+
 ### Added
+- **`diagnostics.resolve_replication_method()`**, which turns `"auto"` into the
+  scheme that will actually run. A default that changes with the data is harder
+  to reason about than either fixed one, so it is inspectable rather than only
+  documented. Passing an explicit scheme still bypasses the rule entirely.
 - **`diagnostics.margin_calibration()` -> `MarginCalibration`**, reporting what
   is actually true about a raked margin: `gap = estimate - target`, which is
   exact arithmetic rather than an estimate; a replication `std_error`;
@@ -73,11 +91,32 @@ lives on the quantity that can carry it.
   — because the step named files explicitly. It now runs the directory.
 
 ### Known limitations
-- The replication standard error understates the margin's true spread by roughly
-  30% (0.00404 systematic and 0.00367 randomized against an actual 0.00564 over
-  25 streams at n=800, G=10). It feeds a diagnostic rather than an interval, and
-  the same machinery applied to the GREG estimate is checked by a coverage study
-  that passes.
+- The raked margin's variance does not scale as `1/n`: at a sample size of 80
+  its spread is 0.72 of what `1/n` predicts from the spread at 800, rising to
+  1.00 by 800 (120 replicates per cell). At small sample sizes the margin is
+  pinned tighter to the target, because fewer observations satisfy the same
+  constraints. The random-groups scaling assumes `1/n` and its replicates are
+  `n/G`, so it sits in the region where the assumption fails; jackknife
+  replicates are `n(1 - 1/G)` and do not.
+
+  Measured against the margin's own spread over 500-600 streams, with each
+  scheme paired on 120 identical further streams, `random_groups` understates by
+  an amount governed by `n/G` while jackknife is within noise of the truth
+  throughout:
+
+  | n | n/G | random_groups | jackknife | paired jk - rg |
+  |---|---|---|---|---|
+  | 300 | 30 | 0.838 [0.802, 0.875] | 0.959 [0.920, 0.999] | +14.4% |
+  | 600 | 60 | 0.923 [0.871, 0.974] | 0.997 [0.940, 1.055] | +8.1% |
+  | 1200 | 120 | 0.958 [0.920, 0.997] | 0.995 [0.954, 1.037] | +3.9% |
+
+  **The size of the gap is specific to the process it was measured on.** On a
+  three-margin population under logistic selection the same paired comparison at
+  n=300 gives +9.3% rather than +14.4%, with random groups at 0.944 of the
+  observed spread and jackknife at 1.032. The direction and the ordering hold in
+  both; the magnitude does not transfer, which is why
+  `resolve_replication_method` documents the rule as a default rather than a law
+  and why `AUTO_REPLICATE_SIZE` is a judgment rather than a derived constant.
 - The calibration gap itself is the raker's tracking lag under a fixed-gain
   update and scales as `1 / (learning_rate * n_sgd_steps)`. A decaying
   Robbins-Monro schedule makes it *worse*, not better, because a shrinking step

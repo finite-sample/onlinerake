@@ -36,11 +36,20 @@ EXTREME_WEIGHT_RATIO = 1000
 MAX_WEIGHT_RATIO_COMPROMISE = 100
 Z_SCORES: dict[float, float] = {0.90: 1.645, 0.95: 1.960, 0.99: 2.576}
 
-#: Replication schemes accepted by :func:`estimate_margin_variance`.
-REPLICATION_METHODS = ("random_groups", "jackknife")
+#: Replication schemes accepted by :func:`estimate_margin_variance`. ``"auto"``
+#: is the default and picks one of the other two; see
+#: :func:`resolve_replication_method`.
+REPLICATION_METHODS = ("auto", "random_groups", "jackknife")
+
+#: The two schemes ``"auto"`` chooses between.
+CONCRETE_REPLICATION_METHODS = ("random_groups", "jackknife")
 
 #: Number of replicate groups used when the caller does not choose one.
 DEFAULT_N_REPLICATES = 10
+
+#: Replicate size at or above which ``"auto"`` picks ``"random_groups"``.
+#: See :func:`resolve_replication_method` for the measurements behind it.
+AUTO_REPLICATE_SIZE = 100
 
 
 @dataclass
@@ -117,6 +126,75 @@ class FeasibilityReport:
     problematic_features: list[str]
     feasibility_scores: dict[str, float]
     recommendations: list[str]
+
+
+def resolve_replication_method(method: str, n_obs: int, n_replicates: int) -> str:
+    """Turn ``"auto"`` into the scheme it actually runs.
+
+    Call this to see what a default-argument call is about to do. Every public
+    function here takes ``method="auto"``, so without this the choice would be
+    invisible -- and a default that silently changes scheme is harder to reason
+    about than either fixed one.
+
+    ``"random_groups"`` scales the spread among ``G`` disjoint groups back up by
+    ``1 / (G(G - 1))``, which assumes the margin's variance goes as ``1/n``. For
+    a *raked* margin it does not: at small sizes the margin is pinned tighter to
+    its target, because fewer observations satisfy the same constraints. Its
+    replicates hold ``n/G`` observations and so sit in that region. Jackknife
+    replicates hold ``n(1 - 1/G)`` and do not.
+
+    Measured against the margin's own spread over 500-600 independent streams,
+    with each scheme's mean taken over 120 further streams and the two schemes
+    paired on identical streams (2 SE bands):
+
+    ===== ===== ==================== ==================== ==============
+    n     n/G   random_groups        jackknife            paired jk - rg
+    ===== ===== ==================== ==================== ==============
+    300      30 0.838 [0.802, 0.875] 0.959 [0.920, 0.999] +14.4%
+    600      60 0.923 [0.871, 0.974] 0.997 [0.940, 1.055]  +8.1%
+    1200    120 0.958 [0.920, 0.997] 0.995 [0.954, 1.037]  +3.9%
+    ===== ===== ==================== ==================== ==============
+
+    Jackknife is within noise of the truth at every size; ``random_groups``
+    understates, by an amount governed by ``n/G`` and decaying as it grows.
+    :data:`AUTO_REPLICATE_SIZE` sits at the point where that understatement has
+    fallen to roughly 5%. **The constant is a judgment, and the percentages
+    above are specific to the process they were measured on** -- two binary
+    margins under this package's defaults. Treat the rule as a sensible default,
+    not a law, and pass an explicit scheme if the choice matters to you.
+
+    The rule also bounds its own cost. Both schemes are linear in ``n``, and
+    jackknife refits roughly ``9x`` the rows, so its cost *rises* with ``n`` --
+    which is the regime handed to ``random_groups``. Cost peaks at the threshold
+    (0.65 s at ``n = 600``) and falls after, against 8.97 s for always-jackknife
+    at ``n = 4800``.
+
+    Args:
+        method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
+        n_obs: Number of observations the raker has seen.
+        n_replicates: Number of replicate groups requested.
+
+    Returns:
+        str: ``"random_groups"`` or ``"jackknife"``. Anything other than
+        ``"auto"`` is returned unchanged.
+
+    Raises:
+        ValueError: If ``method`` is not a known scheme, or ``n_replicates`` is
+            below 2.
+
+    Examples:
+        >>> resolve_replication_method("auto", n_obs=300, n_replicates=10)
+        'jackknife'
+        >>> resolve_replication_method("auto", n_obs=4800, n_replicates=10)
+        'random_groups'
+        >>> resolve_replication_method("random_groups", 300, 10)
+        'random_groups'
+    """
+    _check_replication(method, n_replicates)
+    if method != "auto":
+        return method
+    groups = max(2, min(int(n_replicates), max(n_obs, 1)))
+    return "random_groups" if n_obs / groups >= AUTO_REPLICATE_SIZE else "jackknife"
 
 
 def _check_replication(method: str, n_replicates: int) -> None:
@@ -228,32 +306,63 @@ def _replicate_margins(
     the variance estimate reproducible.
 
     An earlier version of this docstring claimed systematic and randomized
-    grouping "agreed to within the study's noise" over 25 streams. That was
-    never reproduced here. Measured, over 25 streams at n=800 and G=10:
+    grouping "agreed to within the study's noise" over 25 streams. A later one
+    replaced that with a claim that both understate the margin's spread by about
+    30%. **Both were unsupported**, and the second was measured here and
+    retracted: re-running the same comparison on different streams reversed its
+    sign (0.91 and 0.97 on one set of streams, 1.09 and 1.15 on another). The
+    denominator in those ratios is a standard deviation estimated from 20-30
+    streams, whose own relative error is ``1/sqrt(2(S-1))`` -- about 15% at
+    S=25 -- so every one of those numbers sits within a couple of standard
+    errors of 1.0 and of each other. Noise read as signal.
 
-        systematic  i % G          SE 0.00404
-        randomized                 SE 0.00367
-        actual spread of the margin across streams   0.00564
+    What *is* measured, at 120 replicates per cell and monotone, is that the
+    raked margin's variance does not scale as ``1/n``:
 
-    Systematic is the wider of the two, so it is kept -- but **both understate
-    the margin's true spread by roughly 30%**, which is the more useful fact and
-    is stated rather than filed as a pass. A standard error 30% too small makes
-    ``MarginCalibration.gap_ratio`` about 40% too large, which is part of why
-    that ratio carries no absolute threshold.
+        m     sd(margin)   what 1/n predicts   ratio
+        80       0.01042             0.01440    0.72
+       200       0.00843             0.00910    0.93
+       400       0.00629             0.00644    0.98
+       800       0.00455             0.00455    1.00
 
-    The consequence is bounded: this variance now feeds only a diagnostic, not
-    an interval. The same machinery applied to the GREG estimate is a different
-    quantity, and that one is checked by a coverage study which passes.
+    At small ``m`` the margin is pinned tighter to the target -- fewer
+    observations satisfying the same constraints means more freedom per
+    constraint -- so it varies less than ``1/n`` implies. The mean gap is flat
+    (~0.019) across every ``m``, so this is a spread effect and not bias.
+
+    That matters for the choice of scheme. The random-groups scaling
+    ``1/(G(G-1))`` is unbiased only if ``Var(m) = (n/m) * Var(n)``; with G=10
+    the replicate is ``m = n/10``, in the region where that fails. Jackknife
+    replicates are ``m = n(1 - 1/G)``, at the safe end of the table. R's
+    ``survey`` goes further and uses delete-*one* (``m = n-1``) for its
+    jackknife, and defaults to linearization rather than replication at all.
+
+    The two schemes have since been separated, paired on identical streams, and
+    the prediction held: ``random_groups`` understates by an amount governed by
+    ``n/G``, while jackknife is within noise of the truth at every size tried.
+    :func:`resolve_replication_method` carries the table and is what ``"auto"``
+    consults.
 
     Args:
         raker: A fitted raker.
-        method: ``"random_groups"`` or ``"jackknife"``.
+        method: An already-resolved scheme -- ``"random_groups"`` or
+            ``"jackknife"``. ``"auto"`` is rejected; resolve it first.
         n_replicates: Number of groups, capped at the number of observations.
 
     Returns:
         tuple: An array of shape ``(groups, n_features)`` holding each
         replicate's margins, and the number of groups actually used.
+
+    Raises:
+        ValueError: If ``method`` has not been resolved to a concrete scheme.
     """
+    if method not in CONCRETE_REPLICATION_METHODS:
+        raise ValueError(
+            f"expected a resolved scheme, got {method!r}. Pass it through "
+            "resolve_replication_method first -- the subset rule below and the "
+            "scaling factor in _replication_variances must agree, and they can "
+            "only do that if the name is resolved once, before either sees it."
+        )
     n = raker._n_obs
     groups = max(2, min(int(n_replicates), n))
     assignment = np.arange(n) % groups
@@ -289,12 +398,16 @@ def _replication_variances(
 
     Args:
         raker: A fitted raker.
-        method: ``"random_groups"`` or ``"jackknife"``.
+        method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
         n_replicates: Number of groups.
 
     Returns:
         dict: Estimated variance per feature.
     """
+    # Resolved once, here, rather than in each caller: this is the only place
+    # the scheme name reaches both the subset rule and the scaling factor, and
+    # resolving it twice risks the two disagreeing.
+    method = resolve_replication_method(method, raker._n_obs, n_replicates)
     if raker._n_obs < 2:
         # NaN, not 0.0. A single observation cannot be split into two groups, so
         # the variance is unestimable -- and zero variance is a claim that the
@@ -316,7 +429,7 @@ def _replication_variances(
 def estimate_margin_variance(
     raker: OnlineRakingSGD,
     feature: str,
-    method: str = "random_groups",
+    method: str = "auto",
     n_replicates: int = DEFAULT_N_REPLICATES,
 ) -> float:
     """Estimate the sampling variance of a weighted margin by replication.
@@ -386,7 +499,7 @@ def estimate_margin_variance(
 def estimate_margin_std_error(
     raker: OnlineRakingSGD,
     feature: str,
-    method: str = "random_groups",
+    method: str = "auto",
     n_replicates: int = DEFAULT_N_REPLICATES,
 ) -> float:
     """Estimate standard error of a weighted margin.
@@ -430,7 +543,7 @@ def _z_score(confidence_level: float) -> float:
 
 def margin_calibration(
     raker: OnlineRakingSGD,
-    method: str = "random_groups",
+    method: str = "auto",
     n_replicates: int = DEFAULT_N_REPLICATES,
 ) -> list[MarginCalibration]:
     """How closely each weighted margin reached its target.

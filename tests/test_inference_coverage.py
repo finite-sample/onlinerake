@@ -469,3 +469,99 @@ class TestModelAssistedInterval:
         narrow = np.abs(study.estimates - POPULATION_MEAN_OUTCOME) <= half
         with pytest.raises(AssertionError):
             assert_coverage_floor(narrow, CONFIDENCE, "deliberately narrow")
+
+
+# ─── The premise behind the "auto" default ─────────────────────────────
+
+
+@functools.cache
+def run_paired_scheme_study(
+    n: int = 300, streams: int = 120, seed: int = 11
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Both schemes' margin SE on identical streams, plus the margin's spread.
+
+    Paired on the stream: the two schemes see the same raker, so
+    stream-to-stream variation cancels in the difference instead of drowning it.
+
+    ``n=300`` puts the replicates at ``n/G = 30``, the smallest cell in
+    :func:`~onlinerake.diagnostics.resolve_replication_method`'s table.
+
+    **The stream count is sized from a measurement in this population**, not
+    from the two-margin one behind that table -- the gap is process-specific and
+    comes out at +9.3% here against +14.4% there. Over 250 streams the paired
+    difference measured +0.000605 +/- 0.000065, which is 9.3 sigma, implying 26
+    streams for a 3-sigma gate. The default is 120 rather than 26 because the
+    per-stream difference is heavy-tailed -- it is negative on 22% of streams --
+    so its standard error is itself unstable at small counts. A first attempt at
+    40 streams read 2.1 sigma and failed this gate, against 3.7 expected. 120
+    gives about 6 sigma of headroom, so the gate reports the effect being gone
+    rather than the run being unlucky.
+
+    Args:
+        n: Stream length.
+        streams: Number of independent streams.
+        seed: Base seed.
+
+    Returns:
+        tuple: Random-groups SEs, jackknife SEs, and the observed standard
+        deviation of the margin itself across the same streams.
+    """
+    from onlinerake import OnlineRakingSGD
+    from onlinerake.diagnostics import estimate_margin_std_error
+
+    random_groups, jackknife, margins = [], [], []
+    for s in range(streams):
+        raker = OnlineRakingSGD(Targets(**POPULATION))
+        for obs in _stream(np.random.default_rng(seed + s), n):
+            raker.partial_fit(obs)
+        margins.append(raker.margins[FEATURE])
+        random_groups.append(
+            estimate_margin_std_error(raker, FEATURE, method="random_groups")
+        )
+        jackknife.append(estimate_margin_std_error(raker, FEATURE, method="jackknife"))
+    return (
+        np.array(random_groups),
+        np.array(jackknife),
+        float(np.std(margins, ddof=1)),
+    )
+
+
+class TestTheAutoDefaultRestsOnAMeasuredGap:
+    """``auto`` picks jackknife at small replicate sizes. This is why.
+
+    A default justified only by a docstring is a default nothing checks. If the
+    gap these tests measure ever closes -- a change to the raker, the scaling,
+    or the grouping -- the reason for the rule is gone and it should be revisited
+    rather than left standing on a stale measurement.
+    """
+
+    def test_jackknife_reports_a_larger_standard_error(self) -> None:
+        """The registered direction, gated on the paired difference."""
+        random_groups, jackknife, _ = run_paired_scheme_study()
+        difference = jackknife - random_groups
+        standard_error = difference.std(ddof=1) / np.sqrt(len(difference))
+        assert difference.mean() > GATE_SIGMAS * standard_error, (
+            f"paired jackknife - random_groups is {difference.mean():+.6f} "
+            f"+/- {standard_error:.6f}, which does not clear {GATE_SIGMAS} "
+            "sigma; the measurement behind the auto default no longer holds"
+        )
+
+    def test_random_groups_understates_the_margins_own_spread(self) -> None:
+        """The direction that makes the gap a defect rather than a preference.
+
+        Two schemes differing proves nothing on its own -- one of them has to be
+        wrong. The margin's observed spread across the same streams is the
+        arbiter, and it is random groups that falls short of it.
+        """
+        random_groups, jackknife, observed = run_paired_scheme_study()
+        assert random_groups.mean() < observed, (
+            f"random groups reported {random_groups.mean():.5f} against an "
+            f"observed spread of {observed:.5f}; it is supposed to understate"
+        )
+        assert abs(jackknife.mean() - observed) < abs(
+            random_groups.mean() - observed
+        ), (
+            f"jackknife ({jackknife.mean():.5f}) is supposed to sit closer to "
+            f"the observed spread ({observed:.5f}) than random groups "
+            f"({random_groups.mean():.5f})"
+        )

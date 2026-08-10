@@ -738,7 +738,7 @@ def _refit_greg(raker: ModelAssistedRaker, index: np.ndarray) -> float:
 
 def model_assisted_variance(
     raker: ModelAssistedRaker,
-    method: str = "random_groups",
+    method: str = "auto",
     n_replicates: int = 10,
 ) -> float:
     """Replication variance of the GREG model-assisted estimate.
@@ -764,7 +764,9 @@ def model_assisted_variance(
 
     Args:
         raker: A fitted :class:`ModelAssistedRaker`.
-        method: ``"random_groups"`` for disjoint groups, or ``"jackknife"`` for
+        method: ``"auto"`` to pick by replicate size (see
+            :func:`~onlinerake.diagnostics.resolve_replication_method`),
+            ``"random_groups"`` for disjoint groups, or ``"jackknife"`` for
             delete-a-group.
         n_replicates: Number of groups, capped at the number of observations.
 
@@ -775,10 +777,12 @@ def model_assisted_variance(
     Raises:
         ValueError: If ``method`` is unknown or ``n_replicates`` is below two.
     """
-    from .diagnostics import _check_replication
+    from .diagnostics import resolve_replication_method
 
-    _check_replication(method, n_replicates)
     n = raker._n_obs
+    # Resolved before the subset rule and the scaling factor below both branch
+    # on it, and validating is part of resolving.
+    method = resolve_replication_method(method, n, n_replicates)
     if n < 2:
         # Unestimable, not zero. Returning 0.0 here gave a zero-width 95%
         # interval from a single observation.
@@ -807,14 +811,14 @@ def model_assisted_variance(
 
 def model_assisted_std_error(
     raker: ModelAssistedRaker,
-    method: str = "random_groups",
+    method: str = "auto",
     n_replicates: int = 10,
 ) -> float:
     """Standard error of the GREG model-assisted estimate.
 
     Args:
         raker: A fitted :class:`ModelAssistedRaker`.
-        method: ``"random_groups"`` or ``"jackknife"``.
+        method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
         n_replicates: Number of groups.
 
     Returns:
@@ -831,7 +835,7 @@ def model_assisted_std_error(
 def model_assisted_confidence_interval(
     raker: ModelAssistedRaker,
     confidence_level: float = 0.95,
-    method: str = "random_groups",
+    method: str = "auto",
     n_replicates: int = 10,
 ) -> tuple[float, float]:
     """Confidence interval for the GREG model-assisted estimate.
@@ -839,7 +843,7 @@ def model_assisted_confidence_interval(
     Args:
         raker: A fitted :class:`ModelAssistedRaker`.
         confidence_level: Coverage the interval claims.
-        method: ``"random_groups"`` or ``"jackknife"``.
+        method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
         n_replicates: Number of groups.
 
     Returns:

@@ -16,10 +16,13 @@ import pytest
 
 from onlinerake import OnlineRakingMWU, OnlineRakingSGD, Targets
 from onlinerake.diagnostics import (
+    AUTO_REPLICATE_SIZE,
+    _replicate_margins,
     _unfitted_copy,
     estimate_margin_std_error,
     estimate_margin_variance,
     margin_calibration,
+    resolve_replication_method,
 )
 
 TARGETS = {"female": 0.52, "college": 0.35, "young": 0.30}
@@ -194,6 +197,80 @@ class TestArgumentsAreChecked:
         raker = _fitted()
         with pytest.raises(ValueError, match="method must be one of"):
             margin_calibration(raker, method="bootstrap")
+
+
+class TestAutoPicksAScheme:
+    """``"auto"`` is the default, so what it picks is part of the contract.
+
+    A default that changes scheme with the data is harder to reason about than
+    either fixed one. These tests are what makes it inspectable rather than
+    merely documented.
+    """
+
+    def test_it_picks_jackknife_when_replicates_are_small(self):
+        """Below the threshold, random groups understates; see the resolver."""
+        assert resolve_replication_method("auto", n_obs=300, n_replicates=10) == (
+            "jackknife"
+        )
+
+    def test_it_picks_random_groups_when_replicates_are_large(self):
+        """Above it the understatement has decayed and the cheap scheme wins."""
+        assert resolve_replication_method("auto", n_obs=4800, n_replicates=10) == (
+            "random_groups"
+        )
+
+    def test_it_switches_at_the_documented_threshold(self):
+        """The negative case for the two tests above.
+
+        Without this, a resolver that ignored its arguments and returned a
+        constant would pass one of them. Pinning both sides of the boundary is
+        what makes them a measurement of the rule rather than of one branch.
+        """
+        groups = 10
+        below = AUTO_REPLICATE_SIZE * groups - groups
+        at = AUTO_REPLICATE_SIZE * groups
+        assert resolve_replication_method("auto", below, groups) == "jackknife"
+        assert resolve_replication_method("auto", at, groups) == "random_groups"
+
+    @pytest.mark.parametrize("method", ["random_groups", "jackknife"])
+    def test_an_explicit_scheme_passes_through_untouched(self, method):
+        """``auto`` is opt-out. Naming a scheme must always get that scheme."""
+        for n_obs in (50, 300, 4800):
+            assert resolve_replication_method(method, n_obs, 10) == method
+
+    def test_an_unknown_method_raises_here_too(self):
+        """Validation happens as part of resolving, so it cannot be skipped."""
+        with pytest.raises(ValueError, match="method must be one of"):
+            resolve_replication_method("bootstrap", 300, 10)
+
+    def test_the_default_dispatches_to_what_the_resolver_names(self):
+        """The claim that makes the resolver honest.
+
+        If ``auto`` computed one thing and reported another, every other test
+        here would still pass. This is the one that ties them together.
+        """
+        raker = _fitted(n=300)
+        chosen = resolve_replication_method("auto", raker._n_obs, 10)
+        assert chosen == "jackknife"
+        assert estimate_margin_variance(raker, "college") == (
+            estimate_margin_variance(raker, "college", method=chosen)
+        )
+        assert estimate_margin_variance(raker, "college") != (
+            estimate_margin_variance(raker, "college", method="random_groups")
+        )
+
+    def test_the_replicate_builder_refuses_an_unresolved_scheme(self):
+        """The invariant the one-choke-point design rests on.
+
+        ``_replicate_margins`` picks the subsets and ``_replication_variances``
+        picks the scaling factor. If ``"auto"`` reached the first of those it
+        would fall through to the jackknife subset rule while the second read
+        the name again and could scale for random groups. The guard makes that
+        a loud failure rather than a variance off by a factor of ``G**2``.
+        """
+        raker = _fitted(n=80)
+        with pytest.raises(ValueError, match="expected a resolved scheme"):
+            _replicate_margins(raker, "auto", 10)
 
 
 class TestMarginCalibration:

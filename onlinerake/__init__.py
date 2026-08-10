@@ -80,6 +80,7 @@ from .diagnostics import (
     explain_infeasibility_causes,
     margin_calibration,
     optimal_mwu_learning_rate,
+    resolve_replication_method,
     suggest_feasible_targets,
     summarize_raking_results,
 )
@@ -160,6 +161,7 @@ __all__ = [
     "estimate_margin_variance",
     "estimate_margin_std_error",
     "margin_calibration",
+    "resolve_replication_method",
     "check_target_feasibility",
     "analyze_infeasibility",
     "suggest_feasible_targets",
