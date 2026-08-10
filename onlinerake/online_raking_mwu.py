@@ -160,6 +160,3 @@ class OnlineRakingMWU(OnlineRakingSGD):
 
         # record state with final gradient norm
         self._record_state(gradient_norm=final_gradient_norm)
-
-    # alias for consistency with base class
-    fit_one = partial_fit

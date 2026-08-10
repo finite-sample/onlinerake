@@ -859,6 +859,3 @@ class OnlineRakingSGD:
         """
         for obs in observations:
             self.partial_fit(obs)
-
-    # Backward compatibility aliases
-    fit_one = partial_fit

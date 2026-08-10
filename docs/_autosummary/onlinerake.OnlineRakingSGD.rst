@@ -16,7 +16,6 @@
       ~OnlineRakingSGD.__init__
       ~OnlineRakingSGD.check_convergence
       ~OnlineRakingSGD.detect_oscillation
-      ~OnlineRakingSGD.fit_one
       ~OnlineRakingSGD.partial_fit
    
    

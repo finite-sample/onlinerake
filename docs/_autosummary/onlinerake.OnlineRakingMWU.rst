@@ -16,7 +16,6 @@
       ~OnlineRakingMWU.__init__
       ~OnlineRakingMWU.check_convergence
       ~OnlineRakingMWU.detect_oscillation
-      ~OnlineRakingMWU.fit_one
       ~OnlineRakingMWU.partial_fit
    
    

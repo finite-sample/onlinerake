@@ -31,6 +31,10 @@ lives on the quantity that can carry it.
   boundary — and measured 0.470 anytime coverage at `OnlineRakingMWU`'s default.
 - **`summarize_raking_results()` no longer takes `confidence_level`.** Its
   margin section reports calibration, which has no confidence level.
+- **`fit_one`**, on both rakers. It was a bare alias for `partial_fit`, labeled
+  "backward compatibility" against a 1.x that this release already breaks in
+  larger ways. Two names for one method is a question every reader has to answer
+  before writing a line. Use `partial_fit` — it is what sklearn calls it.
 
 ### Changed
 - **Every function taking a replication `method` now defaults to `"auto"`**,
