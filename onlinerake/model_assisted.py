@@ -112,25 +112,33 @@ class ModelAssistedRaker(OnlineRakingSGD):
         prediction_targets: Dict of prediction targets.
 
     Examples:
-        >>> from sklearn.linear_model import LogisticRegression
+        Two stages. The model is fitted in batch and then held fixed while the
+        calibration streams -- that is the design, and it is why
+        :func:`model_assisted_variance` is conditional on the model.
+
+        >>> import numpy as np
         >>> from onlinerake import Targets
-        >>> from onlinerake.model_assisted import ModelAssistedRaker, ModelAssistedTargets
-        >>> from onlinerake.models import ExternalModelWrapper
-        >>>
-        >>> # Stage 1: Fit model (batch)
-        >>> clf = LogisticRegression().fit(X_train, y_train)
-        >>> model = ExternalModelWrapper(clf, use_proba=True)
-        >>>
-        >>> # Stage 2: Stream with calibration
+        >>> from onlinerake.models import LogisticOutcomeModel
+        >>> X = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]] * 10)
+        >>> y = np.array([1, 1, 0, 0] * 10)
+        >>> model = LogisticOutcomeModel().fit(X, y)
+
+        Any object with a ``predict`` method serves; wrap a foreign model in
+        :class:`~onlinerake.models.ExternalModelWrapper` when its API differs.
+
         >>> targets = ModelAssistedTargets(
         ...     demographic_targets=Targets(female=0.51, college=0.32),
         ...     prediction_targets={"pred": 0.48},
         ... )
         >>> raker = ModelAssistedRaker(targets, model)
-        >>>
-        >>> for obs in poll_stream:
-        ...     raker.partial_fit(obs, outcome=obs.get("vote"))
-        ...     print(f"GREG estimate: {raker.model_assisted_estimate:.3f}")
+        >>> stream = [
+        ...     {"female": i % 2, "college": (i % 3) == 0, "vote": i % 2}
+        ...     for i in range(40)
+        ... ]
+        >>> for obs in stream:
+        ...     raker.partial_fit(obs, outcome=obs["vote"])
+        >>> round(raker.model_assisted_estimate, 3)
+        0.582
     """
 
     def __init__(
@@ -181,6 +189,17 @@ class ModelAssistedRaker(OnlineRakingSGD):
         self._outcomes: np.ndarray = np.empty(0, dtype=np.float64)
         self._has_outcomes: np.ndarray = np.empty(0, dtype=bool)
 
+        # The model's own inputs, kept because a replicate cannot rebuild them.
+        # `feature_names_in_obs` may name covariates that are not calibration
+        # targets, and those live nowhere else on the raker: `_features` holds
+        # the demographic row only. Without this a replicate silently fed the
+        # model zeros for every extra covariate and measured the variance of a
+        # different estimator. See `_replay`.
+        self._model_features_capacity: int = 0
+        self._model_features: np.ndarray = np.empty(
+            (0, len(self.feature_names_in_obs)), dtype=np.float64
+        )
+
     def _expand_capacity(self) -> None:
         """Expand capacity for base arrays plus predictions/outcomes."""
         super()._expand_capacity()
@@ -211,6 +230,53 @@ class ModelAssistedRaker(OnlineRakingSGD):
             self._outcomes = new_outcomes
             self._has_outcomes = new_has_outcomes
             self._outcomes_capacity = new_capacity
+
+        # Expand model-input array
+        if self._n_obs >= self._model_features_capacity:
+            new_capacity = max(8, self._model_features_capacity * 2, self._n_obs + 1)
+            new_model_features = np.zeros(
+                (new_capacity, len(self.feature_names_in_obs)), dtype=np.float64
+            )
+            if self._model_features_capacity > 0:
+                new_model_features[: self._model_features_capacity] = (
+                    self._model_features[: self._model_features_capacity]
+                )
+            self._model_features = new_model_features
+            self._model_features_capacity = new_capacity
+
+    def _replay(self, i: int) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Reconstruct the ``partial_fit`` call that produced observation ``i``.
+
+        This raker consumes three things the base one does not: covariates named
+        by ``feature_names_in_obs`` that are not calibration targets, the model
+        prediction built from them, and the outcome. A replicate rebuilt from
+        the demographic row alone loses all three -- extra covariates arrive as
+        zero and the residual penalty disappears, because it is conditioned on
+        an outcome being present.
+
+        Neither loss is visible in the answer. The replicate calibrates, returns
+        a number, and the variance built from it describes an estimator the
+        caller never fitted.
+
+        Demographic values take precedence where a name is in both sets. They
+        agree by construction for binary features given as 0/1 or ``bool``, and
+        for continuous ones, which is the documented input contract.
+
+        Args:
+            i: Position of the observation, in arrival order.
+
+        Returns:
+            tuple: The observation dict, carrying the model's inputs as well as
+            the demographic row, and the keyword arguments it was fitted with.
+        """
+        model_obs = dict(
+            zip(self.feature_names_in_obs, self._model_features[i], strict=True)
+        )
+        demographic_obs, kwargs = super()._replay(i)
+        model_obs.update(demographic_obs)
+        if bool(self._has_outcomes[i]):
+            kwargs["outcome"] = float(self._outcomes[i])
+        return model_obs, kwargs
 
     def _extract_model_features(
         self, obs: dict[str, Any] | Any
@@ -304,8 +370,9 @@ class ModelAssistedRaker(OnlineRakingSGD):
         model_features = self._extract_model_features(obs)
         prediction = float(self.model.predict(model_features.reshape(1, -1))[0])
 
-        # Store prediction
+        # Store prediction and the inputs that produced it
         self._predictions[self._n_obs] = prediction
+        self._model_features[self._n_obs] = model_features
 
         # Store outcome if provided
         if outcome is not None:
@@ -554,23 +621,39 @@ class StreamingMRP:
         cell_rakers: Dict mapping cell_id to OnlineRakingSGD for that cell.
 
     Examples:
-        >>> from onlinerake.model_assisted import StreamingMRP, PoststratificationCells
+        Each cell carries its known share of the population and its own target,
+        and the shares are what the cell estimates are recombined by:
+
+        >>> import numpy as np
         >>> from onlinerake.models import LogisticOutcomeModel
-        >>>
-        >>> # Define cells
-        >>> cells = PoststratificationCells([
-        ...     PoststratificationCell("young_f", {"age": "young", "female": 1}, 0.15, 0.45),
-        ...     PoststratificationCell("young_m", {"age": "young", "female": 0}, 0.14, 0.52),
-        ...     PoststratificationCell("old_f", {"age": "old", "female": 1}, 0.36, 0.48),
-        ...     PoststratificationCell("old_m", {"age": "old", "female": 0}, 0.35, 0.55),
-        ... ])
-        >>>
-        >>> # Create MRP estimator
+        >>> X = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]] * 10)
+        >>> y = np.array([1, 1, 0, 0] * 10)
+        >>> model = LogisticOutcomeModel().fit(X, y)
+        >>> cells = PoststratificationCells(
+        ...     [
+        ...         PoststratificationCell(
+        ...             "young_f", {"age": "young", "female": 1}, 0.15, 0.45
+        ...         ),
+        ...         PoststratificationCell(
+        ...             "young_m", {"age": "young", "female": 0}, 0.14, 0.52
+        ...         ),
+        ...         PoststratificationCell(
+        ...             "old_f", {"age": "old", "female": 1}, 0.36, 0.48
+        ...         ),
+        ...         PoststratificationCell(
+        ...             "old_m", {"age": "old", "female": 0}, 0.35, 0.55
+        ...         ),
+        ...     ]
+        ... )
         >>> mrp = StreamingMRP(model=model, cells=cells)
-        >>>
-        >>> for obs in poll_stream:
-        ...     mrp.partial_fit(obs, outcome=obs.get("vote"))
-        ...     print(f"Population estimate: {mrp.population_estimate:.3f}")
+        >>> stream = [
+        ...     {"age": "young" if i % 2 else "old", "female": i % 2, "vote": i % 2}
+        ...     for i in range(40)
+        ... ]
+        >>> for obs in stream:
+        ...     mrp.partial_fit(obs, outcome=obs["vote"])
+        >>> round(mrp.population_estimate, 3)
+        0.396
     """
 
     def __init__(
@@ -704,3 +787,181 @@ class StreamingMRP:
     def n_obs(self) -> int:
         """Total observations processed."""
         return self._n_obs
+
+
+# ─── Inference for the GREG estimate ───────────────────────────────────
+
+
+def _refit_greg(raker: ModelAssistedRaker, index: np.ndarray) -> float:
+    """Re-run the calibration on a subset and recompute the GREG estimate.
+
+    Unlike the margin replicates in :mod:`onlinerake.diagnostics`, the outcome
+    has to be replayed as well: the GREG estimate is a weighted mean of the
+    outcome plus an adjustment built from the model's predictions, so a
+    replicate fitted without outcomes would return the weighted prediction
+    instead and measure a different estimator.
+
+    Args:
+        raker: The fitted raker, used for its class and configuration.
+        index: Positions of the observations to replay, in arrival order.
+
+    Returns:
+        float: The replicate's GREG estimate.
+    """
+    from .diagnostics import _unfitted_copy
+
+    replicate = _unfitted_copy(raker)
+    for i in index:
+        obs, kwargs = raker._replay(int(i))
+        replicate.partial_fit(obs, **kwargs)
+    return float(replicate.model_assisted_estimate)
+
+
+def model_assisted_variance(
+    raker: ModelAssistedRaker,
+    method: str = "auto",
+    n_replicates: int = 10,
+    seed: int = 0,
+) -> float:
+    """Replication variance of the GREG model-assisted estimate.
+
+    This is the quantity in the package that carries genuine sampling
+    uncertainty. A *raked margin* does not: after calibration it is the target
+    it was aimed at, which is why R's ``survey`` reports a standard error of
+    exactly zero for one. An outcome estimated under those weights is a
+    different matter, and ``survey`` reports a real standard error for it.
+
+    The estimator re-runs the whole calibration inside each replicate, which is
+    what makes it account for the weights having been fitted. ``survey`` takes
+    the same position from the other direction: it refuses to calibrate a design
+    after replicate weights exist, because each replicate has to be calibrated
+    in its own right.
+
+    **The interval is conditional on the outcome model.** The model is fitted in
+    batch and held fixed while calibration streams -- that is the package's
+    design, and ``self.model`` is only ever read here, never refitted -- so the
+    replicates vary the calibration but not the model. Uncertainty from having
+    estimated the model is therefore not in this number. Where the model was fit
+    on the same data being raked, treat the interval as optimistic.
+
+    Args:
+        raker: A fitted :class:`ModelAssistedRaker`.
+        method: ``"auto"`` to pick by replicate size (see
+            :func:`~onlinerake.diagnostics.resolve_replication_method`),
+            ``"random_groups"`` for disjoint groups, or ``"jackknife"`` for
+            delete-a-group.
+        n_replicates: Number of groups, capped at the number of observations.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
+
+    Returns:
+        float: Estimated variance of ``raker.model_assisted_estimate``, or
+        ``nan`` below two observations, where it is unestimable.
+
+    Raises:
+        ValueError: If ``method`` is unknown or ``n_replicates`` is below two.
+    """
+    from .diagnostics import _group_assignment, resolve_replication_method
+
+    n = raker._n_obs
+    # Resolved before the subset rule and the scaling factor below both branch
+    # on it, and validating is part of resolving.
+    method = resolve_replication_method(method, n, n_replicates)
+    if n < 2:
+        # Unestimable, not zero. Returning 0.0 here gave a zero-width 95%
+        # interval from a single observation.
+        return float("nan")
+
+    groups = max(2, min(int(n_replicates), n))
+    # Same randomized balanced assignment the margin path uses. A systematic
+    # `arange(n) % groups` collapses onto any period in arrival order that
+    # shares a factor with `groups`.
+    assignment = _group_assignment(n, groups, seed)
+    positions = np.arange(n)
+    subsets = (
+        (positions[assignment == g] for g in range(groups))
+        if method == "random_groups"
+        else (positions[assignment != g] for g in range(groups))
+    )
+    estimates = np.array([_refit_greg(raker, subset) for subset in subsets])
+    if not np.all(np.isfinite(estimates)):
+        return float("nan")
+
+    deviations = estimates - estimates.mean()
+    scale = (
+        1.0 / (groups * (groups - 1))
+        if method == "random_groups"
+        else (groups - 1) / groups
+    )
+    return float(scale * np.sum(deviations**2))
+
+
+def model_assisted_std_error(
+    raker: ModelAssistedRaker,
+    method: str = "auto",
+    n_replicates: int = 10,
+    seed: int = 0,
+) -> float:
+    """Standard error of the GREG model-assisted estimate.
+
+    Args:
+        raker: A fitted :class:`ModelAssistedRaker`.
+        method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
+        n_replicates: Number of groups.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
+
+    Returns:
+        float: Square root of :func:`model_assisted_variance`, or ``nan`` where
+        that is unavailable.
+
+    Raises:
+        ValueError: If ``method`` is unknown or ``n_replicates`` is below two.
+    """
+    variance = model_assisted_variance(raker, method, n_replicates, seed)
+    return float(np.sqrt(variance)) if np.isfinite(variance) else float("nan")
+
+
+def model_assisted_confidence_interval(
+    raker: ModelAssistedRaker,
+    confidence_level: float = 0.95,
+    method: str = "auto",
+    n_replicates: int = 10,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """Confidence interval for the GREG model-assisted estimate.
+
+    Args:
+        raker: A fitted :class:`ModelAssistedRaker`.
+        confidence_level: Coverage the interval claims.
+        method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
+        n_replicates: Number of groups.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
+
+    Returns:
+        tuple: Lower and upper bounds. ``(nan, nan)`` when the variance is
+        unavailable.
+
+    Raises:
+        ValueError: If ``method`` is unknown or ``n_replicates`` is below two.
+    """
+    from .diagnostics import _z_score
+
+    # Validated first, so whether an argument is legal does not depend on how
+    # much data happens to be present. `_z_score` used to be reached only after
+    # the early return below, which meant confidence_level=2 raised at n=5 and
+    # returned (nan, nan) at n=1 -- one call, two contracts.
+    _z_score(confidence_level)
+
+    std_error = model_assisted_std_error(raker, method, n_replicates, seed)
+    estimate = float(raker.model_assisted_estimate)
+    if not np.isfinite(std_error) or not np.isfinite(estimate):
+        return (float("nan"), float("nan"))
+    # Not clamped to [0, 1]: the GREG estimate is a mean of an arbitrary
+    # outcome, not a proportion, so the margin helper's clamp would be wrong.
+    half = _z_score(confidence_level) * std_error
+    return (estimate - half, estimate + half)

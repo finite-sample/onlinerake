@@ -12,11 +12,19 @@ The package enables real-time weight adjustment for streaming survey data to mat
 
 ## Recent Major Updates
 
-### Performance Optimizations (Latest)
+### Performance
 - **Capacity doubling**: Eliminated O(n²) memory reallocations for weights storage
-- **Array optimization**: Moved demographic conversions outside gradient loops  
+- **Array optimization**: Moved demographic conversions outside gradient loops
 - **Configurable statistics**: Optional weight distribution computations (10-100x speedup for large streams)
-- **Linear scaling**: Performance now scales nearly linearly with data size
+- **Cost is quadratic in stream length, by design.** `partial_fit` rewrites all
+  `n` accumulated weights (`online_raking_sgd.py:803`) and `_compute_gradient`
+  is itself O(n), so per-observation work is Θ(n · n_sgd_steps). "Streaming"
+  describes how data arrives, not the cost of taking it. Measured on three
+  binary features: 104 µs/obs at n=2,500 rising to 645 µs/obs at n=40,000,
+  fitted exponent 1.66 on total time. This module previously claimed
+  "performance independent of number of observations" and "3000-6000
+  observations per second"; both were false, the second silently depending on
+  an unstated n. Plan for tens of thousands per stream, not millions.
 
 ### Numerical Stability Improvements
 - **MWU exponent clipping**: Dtype-aware bounds prevent overflow (supports extreme learning rates like 1e6)

@@ -60,31 +60,6 @@ class StreamingSnapshot:
 
 
 @dataclass
-class ConfidenceSequence:
-    """Time-uniform confidence sequence for streaming estimation.
-
-    Unlike fixed-sample confidence intervals, confidence sequences
-    remain valid at all stopping times. They provide anytime-valid
-    inference without requiring a pre-specified sample size.
-
-    Attributes:
-        feature: The feature being estimated.
-        lower_bounds: Lower confidence bounds at each time point.
-        upper_bounds: Upper confidence bounds at each time point.
-        estimates: Point estimates at each time point.
-        confidence_level: Nominal coverage probability.
-        times: Observation numbers for each bound.
-    """
-
-    feature: str
-    lower_bounds: list[float]
-    upper_bounds: list[float]
-    estimates: list[float]
-    confidence_level: float
-    times: list[int]
-
-
-@dataclass
 class RetroactiveImpact:
     """Analysis of how new observations retroactively change estimates.
 
@@ -214,104 +189,50 @@ class StreamingEstimator:
         return closest
 
 
-def compute_confidence_sequence(
-    raker: OnlineRakingSGD,
-    feature: str,
-    confidence_level: float = 0.95,
-) -> ConfidenceSequence:
-    """Compute a time-uniform confidence sequence for a feature.
-
-    Uses a betting-based approach to construct anytime-valid confidence
-    intervals that remain valid at all stopping times.
-
-    The width of the sequence shrinks as O(1/√t) but slower than fixed-
-    sample intervals, paying for the flexibility of sequential validity.
-
-    Args:
-        raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
-        feature: Feature name to construct sequence for.
-        confidence_level: Nominal coverage probability.
-
-    Returns:
-        ConfidenceSequence with bounds at each observation.
-    """
-    if raker._n_obs == 0:
-        return ConfidenceSequence(
-            feature=feature,
-            lower_bounds=[],
-            upper_bounds=[],
-            estimates=[],
-            confidence_level=confidence_level,
-            times=[],
-        )
-
-    # Compute sequence using boundary crossing approach
-    alpha = 1 - confidence_level
-    lower_bounds: list[float] = []
-    upper_bounds: list[float] = []
-    estimates: list[float] = []
-    times: list[int] = []
-
-    # Use history if available, otherwise just current state
-    if raker.history:
-        for state in raker.history:
-            t = state["n_obs"]
-            margins = state["weighted_margins"]
-            ess = state["ess"]
-
-            if ess <= 0:
-                continue
-
-            p_hat = margins[feature]
-
-            # Time-uniform confidence interval using Hoeffding-style bound
-            # Width scales as sqrt(log(log(t) + 1) / t) for anytime validity
-            log_term = np.log(np.log(t + 2) + 1) + np.log(2 / alpha)
-            width = np.sqrt(log_term / (2 * ess))
-
-            lower = max(0.0, p_hat - width)
-            upper = min(1.0, p_hat + width)
-
-            lower_bounds.append(lower)
-            upper_bounds.append(upper)
-            estimates.append(p_hat)
-            times.append(t)
-    else:
-        t = raker._n_obs
-        p_hat = raker.margins[feature]
-        ess = raker.effective_sample_size
-
-        log_term = np.log(np.log(t + 2) + 1) + np.log(2 / alpha)
-        width = np.sqrt(log_term / (2 * ess))
-
-        lower_bounds.append(max(0.0, p_hat - width))
-        upper_bounds.append(min(1.0, p_hat + width))
-        estimates.append(p_hat)
-        times.append(t)
-
-    return ConfidenceSequence(
-        feature=feature,
-        lower_bounds=lower_bounds,
-        upper_bounds=upper_bounds,
-        estimates=estimates,
-        confidence_level=confidence_level,
-        times=times,
-    )
-
-
 def estimate_path_dependent_variance(
     raker: OnlineRakingSGD,
     feature: str,
+    n_permutations: int = 20,
+    seed: int = 0,
 ) -> dict[str, float]:
     """Estimate variance accounting for path-dependent weight updates.
 
-    Standard variance estimators assume fixed weights. In streaming raking,
-    weights depend on the order and content of all observations, creating
-    path dependence. This function estimates variance including this effect.
+    Standard variance estimators assume fixed weights. In streaming raking the
+    weights depend on the order observations arrived in as well as on which
+    observations arrived, so there are two sources to separate:
+
+    * ``sampling_variance`` -- different observations. A replication variance,
+      with the calibration re-run inside each replicate. It replaced the
+      ``p(1-p)/ESS`` this used to carry, which is the variance of an unweighted
+      proportion and measured 4.43x the margin's actual spread.
+    * ``path_variance`` -- **the same observations in a different order.** The
+      whole sample is refitted ``n_permutations`` times under shuffled arrival
+      orders and the spread of the resulting margin is taken.
+
+    The second used to be the variance of the margin over the last ten entries
+    of ``history``. Those are ten points along one path at ten different sample
+    sizes, serially dependent and still converging, so their spread is not an
+    estimate of anything the caller asked for. Measured against the
+    permutation spread on a stationary stream it came to 0.08, 0.04 and 0.02 of
+    it at n = 200, 400 and 800 -- understating the effect by more than tenfold
+    and drifting further out with every observation, because a converging path
+    flattens while genuine order-dependence does not.
+
+    **The two components are added on an independence assumption**, which is
+    not proved here. Replication holds arrival order fixed and varies the
+    sample; permutation holds the sample fixed and varies the order; the sum is
+    a reasonable total but the cross-term is not estimated. Read the components
+    rather than the total when the distinction matters.
+
+    Cost is ``n_permutations`` full recalibrations on top of the replication,
+    so this is much the most expensive diagnostic in the package.
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
         feature: Feature name.
+        n_permutations: Refits used to measure order dependence. Below two the
+            component is unestimable and comes back ``nan``.
+        seed: Seed for the permutations, so the answer is reproducible.
 
     Returns:
         Dictionary with variance components.
@@ -321,24 +242,32 @@ def estimate_path_dependent_variance(
             "total_variance": np.nan,
             "sampling_variance": np.nan,
             "path_variance": np.nan,
+            "path_contribution_pct": np.nan,
         }
 
-    # Get current estimate
-    current_margin = raker.margins[feature]
+    # Replication variance, not p(1-p)/ESS. The latter is the variance of an
+    # UNWEIGHTED proportion and was measured at 4.43x the margin's true spread,
+    # because it prices in none of the variance reduction that calibrating onto
+    # a fixed target produces. See onlinerake.diagnostics.
+    from .diagnostics import estimate_margin_variance
 
-    # Simple variance estimate (ignoring path dependence)
-    ess = raker.effective_sample_size
-    sampling_variance = current_margin * (1 - current_margin) / ess
+    sampling_variance = estimate_margin_variance(raker, feature)
 
-    # Path-dependent variance from history variation
-    if len(raker.history) > 10:
-        margin_history = [
-            state["weighted_margins"][feature] for state in raker.history[-50:]
+    # Order dependence, measured by refitting the same observations in shuffled
+    # arrival orders. Not the spread of the last few history entries: those sit
+    # at different sample sizes on a single path and measure convergence, not
+    # order.
+    from .diagnostics import _refit_margins
+
+    if raker._n_obs >= 2 and n_permutations >= 2:
+        rng = np.random.default_rng(seed)
+        permuted = [
+            _refit_margins(raker, rng.permutation(raker._n_obs))[feature]
+            for _ in range(int(n_permutations))
         ]
-        # Variance in recent estimates (captures path effects)
-        path_variance = float(np.var(margin_history[-10:]))
+        path_variance = float(np.var(permuted, ddof=1))
     else:
-        path_variance = 0.0
+        path_variance = float("nan")
 
     total_variance = sampling_variance + path_variance
 
@@ -346,8 +275,13 @@ def estimate_path_dependent_variance(
         "total_variance": total_variance,
         "sampling_variance": sampling_variance,
         "path_variance": path_variance,
+        # nan, not 0. Below two permutations the component is unestimable, and
+        # reporting a 0% share there is a claim that order does not matter --
+        # which is precisely what was not measured.
         "path_contribution_pct": (
-            100 * path_variance / total_variance if total_variance > 0 else 0
+            100 * path_variance / total_variance
+            if np.isfinite(total_variance) and total_variance > 0
+            else float("nan")
         ),
     }
 

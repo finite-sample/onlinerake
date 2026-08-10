@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "onlinerake"
-version = "1.4.0"
+version = "2.0.0"
 description = "Streaming survey raking via SGD and MWU"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -55,7 +55,13 @@ module-root = ""
 
 [dependency-groups]
 dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.7.0", "mypy>=1.0", "pre-commit>=3.0", "twine>=4.0", "pydoclint>=0.5.0", "pyright>=1.1.0"]
-test = ["pytest>=7.0", "pytest-cov>=4.0"]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    # A git reference, so it stays in dependency-groups and out of the published
+    # extras: PyPI rejects direct URL references in project metadata.
+    "simcheck @ git+https://github.com/finite-sample/simcheck",
+]
 
 [tool.ruff]
 line-length = 88

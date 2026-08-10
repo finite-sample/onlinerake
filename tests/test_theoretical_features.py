@@ -27,11 +27,9 @@ from onlinerake.learning_rate import (
     robbins_monro_schedule,
 )
 from onlinerake.streaming_inference import (
-    ConfidenceSequence,
     StreamingEstimator,
     StreamingSnapshot,
     analyze_estimate_stability,
-    compute_confidence_sequence,
     estimate_path_dependent_variance,
     explain_streaming_semantics,
 )
@@ -42,7 +40,7 @@ class TestRobbinsMonroVerification:
 
     def test_constant_lr_fails_rm(self):
         """Constant learning rate should not satisfy Robbins-Monro."""
-        result = verify_robbins_monro(5.0, T=1000)
+        result = verify_robbins_monro(5.0, n_steps=1000)
 
         assert isinstance(result, RobbinsMonroVerification)
         assert result.condition_1_satisfied
@@ -51,7 +49,7 @@ class TestRobbinsMonroVerification:
     def test_polynomial_decay_satisfies_rm(self):
         """Polynomial decay with proper power should satisfy Robbins-Monro."""
         schedule = PolynomialDecayLR(initial_lr=5.0, power=0.6, min_lr=0.0)
-        result = verify_robbins_monro(schedule, T=10000)
+        result = verify_robbins_monro(schedule, n_steps=10000)
 
         assert result.condition_1_satisfied
         assert result.condition_2_satisfied
@@ -59,7 +57,7 @@ class TestRobbinsMonroVerification:
     def test_inverse_time_decay_satisfies_rm(self):
         """Inverse time decay should satisfy Robbins-Monro."""
         schedule = InverseTimeDecayLR(initial_lr=5.0, decay=0.01, min_lr=0.0)
-        result = verify_robbins_monro(schedule, T=10000)
+        result = verify_robbins_monro(schedule, n_steps=10000)
 
         assert result.condition_1_satisfied
         assert result.condition_2_satisfied
@@ -67,7 +65,7 @@ class TestRobbinsMonroVerification:
     def test_constant_lr_schedule_object(self):
         """ConstantLR schedule should fail Robbins-Monro."""
         schedule = ConstantLR(learning_rate=1.0)
-        result = verify_robbins_monro(schedule, T=1000)
+        result = verify_robbins_monro(schedule, n_steps=1000)
 
         assert not result.condition_2_satisfied
 
@@ -287,31 +285,85 @@ class TestStreamingInference:
             }
             self.raker.partial_fit(obs)
 
-    def test_confidence_sequence_computation(self):
-        """Should compute valid confidence sequences."""
-        conf_seq = compute_confidence_sequence(self.raker, "age", confidence_level=0.95)
+    def test_calibration_reports_the_gap_rather_than_an_interval(self):
+        """Replaces test_confidence_sequence_computation.
 
-        assert isinstance(conf_seq, ConfidenceSequence)
-        assert conf_seq.feature == "age"
-        assert conf_seq.confidence_level == 0.95
-        assert len(conf_seq.lower_bounds) > 0
-        assert len(conf_seq.upper_bounds) == len(conf_seq.lower_bounds)
+        ``compute_confidence_sequence`` has been removed. It put a shrinking
+        Hoeffding-style band around a calibrated margin and called the result
+        time-uniform; measured anytime coverage was 0.470 against a nominal
+        0.95. The band was not the problem. A raked margin is aimed at a target
+        the caller supplied as known, so R's ``survey`` reports a standard error
+        of exactly zero for one, and no width around it estimates anything.
 
-        for lower, upper in zip(
-            conf_seq.lower_bounds, conf_seq.upper_bounds, strict=False
-        ):
-            assert lower <= upper
-            assert 0 <= lower <= 1
-            assert 0 <= upper <= 1
+        What an online raker can report honestly is how far it got.
+        """
+        from onlinerake.diagnostics import margin_calibration
+
+        calibrations = margin_calibration(self.raker)
+        assert {c.feature for c in calibrations} == {"age", "gender"}
+        for cal in calibrations:
+            assert cal.gap == pytest.approx(cal.estimate - cal.target)
+            assert cal.std_error >= 0
 
     def test_path_dependent_variance(self):
         """Should estimate path-dependent variance."""
-        result = estimate_path_dependent_variance(self.raker, "age")
+        result = estimate_path_dependent_variance(self.raker, "age", n_permutations=5)
 
         assert "total_variance" in result
         assert "sampling_variance" in result
         assert "path_variance" in result
         assert result["total_variance"] >= result["sampling_variance"]
+
+    def test_path_variance_measures_order_and_nothing_else(self):
+        """It refits shuffled orders; it does not read the history tail.
+
+        The old implementation took the variance of the margin over the last
+        ten ``history`` entries. Those are ten points on one path at ten
+        different sample sizes, so their spread measures how far convergence
+        has flattened, not how much the answer depends on arrival order.
+        Against the permutation spread it came to 0.08, 0.04 and 0.02 of it at
+        n = 200, 400, 800 -- understating the effect more than tenfold, and
+        getting worse as the stream grew.
+
+        Comparing against a freshly computed permutation spread is the direct
+        statement of what the number is supposed to be.
+        """
+        import numpy as np
+
+        from onlinerake.diagnostics import _refit_margins
+
+        reported = estimate_path_dependent_variance(
+            self.raker, "age", n_permutations=25, seed=3
+        )["path_variance"]
+
+        rng = np.random.default_rng(11)
+        independent = float(
+            np.var(
+                [
+                    _refit_margins(self.raker, rng.permutation(self.raker._n_obs))[
+                        "age"
+                    ]
+                    for _ in range(25)
+                ],
+                ddof=1,
+            )
+        )
+        # Two 25-draw variance estimates of one quantity, under different
+        # seeds, so their ratio carries real sampling error: this band is
+        # deliberately generous. The old statistic sat 12x to 50x below it.
+        assert 0.25 < reported / independent < 4.0
+
+    def test_path_variance_is_reproducible_and_seed_dependent(self):
+        """A randomized estimator must say which randomness produced it.
+
+        Without the second half, a function that ignored ``seed`` outright
+        would pass the reproducibility assertion.
+        """
+        a = estimate_path_dependent_variance(self.raker, "age", seed=0)
+        b = estimate_path_dependent_variance(self.raker, "age", seed=0)
+        c = estimate_path_dependent_variance(self.raker, "age", seed=99)
+        assert a["path_variance"] == b["path_variance"]
+        assert a["path_variance"] != c["path_variance"]
 
     def test_streaming_estimator(self):
         """StreamingEstimator should track snapshots and retroactive changes."""
@@ -449,8 +501,9 @@ class TestIntegrationConvergenceAndInfeasibility:
         infeas = analyze_infeasibility(raker)
         assert infeas.is_feasible
 
-        conf_seq = compute_confidence_sequence(raker, "age")
-        assert len(conf_seq.lower_bounds) > 0
+        from onlinerake.diagnostics import margin_calibration
+
+        assert len(margin_calibration(raker)) > 0
 
         conditions = verify_convergence_conditions(raker)
         assert conditions["overall_status"] in ["PASS", "WARN"]
@@ -487,3 +540,121 @@ class TestMWUSpecificTheory:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestTheNumericalFallbackRuns:
+    """A custom schedule takes a path none of the analytic branches cover.
+
+    This existed untested, and the 2.0.0 rename of ``T`` to ``n_steps`` left a
+    stale reference inside it. Nothing failed: no test constructs a schedule
+    whose ``get_params()['type']`` is unrecognised, so the branch never
+    executed. ruff caught the undefined name; this stops the next one being
+    caught by a user.
+    """
+
+    def test_an_unknown_schedule_type_is_verified_numerically(self):
+        from onlinerake.learning_rate import LearningRateSchedule
+
+        class CustomSchedule(LearningRateSchedule):
+            """Polynomial decay the dispatcher has no analytic branch for."""
+
+            def __call__(self, t: int) -> float:
+                return 1.0 / (t**0.7)
+
+            def get_params(self) -> dict:
+                return {"type": "something_the_dispatcher_has_never_seen"}
+
+        result = verify_robbins_monro(CustomSchedule(), n_steps=500)
+
+        # 0.5 < 0.7 <= 1, so both conditions should hold.
+        assert result.condition_1_satisfied
+        assert result.condition_2_satisfied
+        assert result.n_steps_evaluated == 500
+        assert any("Evaluated over" in note for note in result.analysis_notes)
+
+
+class TestUnestimableIsNotZero:
+    """An unmeasured quantity reports ``nan``, never a confident zero.
+
+    This is the same defect as the n<2 zero-width interval, in a different
+    place: below two permutations the order component cannot be estimated, and
+    reporting a 0% contribution there asserts that arrival order does not
+    matter -- which is exactly what was not measured.
+    """
+
+    def test_too_few_permutations_gives_nan_not_zero_percent(self):
+        raker = OnlineRakingSGD(Targets(age=0.5))
+        for i in range(10):
+            raker.partial_fit({"age": i % 2})
+
+        result = estimate_path_dependent_variance(raker, "age", n_permutations=1)
+
+        assert np.isnan(result["path_variance"])
+        assert np.isnan(result["total_variance"])
+        assert np.isnan(result["path_contribution_pct"]), (
+            "an unestimable order contribution was reported as 0%"
+        )
+
+    def test_a_real_estimate_still_reports_a_number(self):
+        """The falsifier: a function returning nan unconditionally would pass
+        the test above.
+        """
+        raker = OnlineRakingSGD(Targets(age=0.5))
+        for i in range(60):
+            raker.partial_fit({"age": i % 2})
+
+        result = estimate_path_dependent_variance(raker, "age", n_permutations=8)
+        assert np.isfinite(result["path_contribution_pct"])
+
+
+class TestMWUActuallyStepsItsSchedule:
+    """Accepting a schedule and honouring one are different things.
+
+    ``OnlineRakingMWU`` took a ``LearningRateSchedule``, stored it, and
+    reported ``uses_lr_schedule is True`` -- while its update read
+    ``self.learning_rate`` directly and never called the accessor that advances
+    the schedule. The rate therefore stayed at its initial value for the whole
+    stream. Nothing raised, and the weights it produced were those of a
+    constant-rate run.
+
+    The consequence reached the diagnostics: ``analyze_convergence`` reads the
+    schedule, so it certified Robbins-Monro compliance for a raker that was in
+    fact running at a constant rate -- which this package documents as *not*
+    satisfying Robbins-Monro.
+    """
+
+    @staticmethod
+    def _rates(cls, steps=30):
+        schedule = PolynomialDecayLR(initial_lr=5.0, power=0.6, min_lr=0.0)
+        raker = cls(Targets(a=0.5), learning_rate=schedule)
+        seen = []
+        for i in range(steps):
+            raker.partial_fit({"a": i % 2})
+            seen.append(float(raker.learning_rate))
+        return raker, seen
+
+    def test_the_rate_decays_as_the_schedule_says(self):
+        _, rates = self._rates(OnlineRakingMWU)
+        assert rates[0] > rates[-1], (
+            f"learning rate never moved: {rates[0]} -> {rates[-1]}; the "
+            "schedule is accepted but not stepped"
+        )
+        assert rates == sorted(rates, reverse=True)
+
+    def test_it_matches_the_parent_it_subclasses(self):
+        """Both classes share the schedule machinery, so both must step it.
+
+        This is the control: without it, a fix that broke SGD's schedule to
+        match MWU's would satisfy the test above.
+        """
+        _, mwu = self._rates(OnlineRakingMWU)
+        _, sgd = self._rates(OnlineRakingSGD)
+        assert mwu == pytest.approx(sgd)
+
+    def test_a_constant_rate_still_stays_constant(self):
+        """The falsifier: a raker given no schedule must not start decaying."""
+        raker = OnlineRakingMWU(Targets(a=0.5), learning_rate=2.0)
+        for i in range(20):
+            raker.partial_fit({"a": i % 2})
+        assert float(raker.learning_rate) == 2.0
+        assert not raker.uses_lr_schedule

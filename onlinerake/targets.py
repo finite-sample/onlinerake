@@ -44,10 +44,14 @@ class Targets:
         _validate_feature_exists: Validates that a feature is defined in targets.
 
     Examples:
-        >>> # Binary features only (backward compatible)
-        >>> targets = Targets(owns_car=0.4, is_subscriber=0.2, likes_coffee=0.7)
-        >>> print(targets.feature_names)
+        >>> # Binary features only
+        >>> binary = Targets(owns_car=0.4, is_subscriber=0.2, likes_coffee=0.7)
+        >>> print(binary.feature_names)
         ['is_subscriber', 'likes_coffee', 'owns_car']
+        >>> print(binary["owns_car"])
+        0.4
+        >>> print("owns_car" in binary)
+        True
 
         >>> # Mixed binary and continuous features
         >>> targets = Targets(
@@ -62,14 +66,8 @@ class Targets:
         True
         >>> print(targets["age"])
         42.0
-
-        >>> # Access target values
-        >>> print(targets['owns_car'])
-        0.4
-
-        >>> # Check if feature exists
-        >>> print('owns_car' in targets)
-        True
+        >>> print(targets.feature_names)
+        ['age', 'college', 'gender', 'income']
 
     Raises:
         ValueError: If any binary target proportion is not between 0 and 1,
@@ -339,10 +337,10 @@ class Targets:
         Examples:
             >>> targets = Targets(a=0.5, b=0.3)
             >>> repr(targets)
-            "Targets(a=0.50, b=0.30)"
+            'Targets(a=0.50, b=0.30)'
             >>> targets = Targets(gender=0.5, age=(35.0, "mean"))
             >>> repr(targets)
-            "Targets(age=35.00 [mean], gender=0.50)"
+            'Targets(age=35.00 [mean], gender=0.50)'
         """
         items = []
         for k in self._feature_names:

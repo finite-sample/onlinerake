@@ -6,12 +6,11 @@ import pytest
 from onlinerake import BatchIPF, OnlineRakingMWU, OnlineRakingSGD, Targets
 from onlinerake.diagnostics import (
     check_target_feasibility,
-    compute_confidence_interval,
     compute_design_effect,
     compute_weight_efficiency,
     estimate_margin_std_error,
     estimate_margin_variance,
-    get_margin_estimates,
+    margin_calibration,
     summarize_raking_results,
 )
 from onlinerake.learning_rate import (
@@ -255,29 +254,32 @@ class TestDiagnostics:
         assert se > 0
         assert se < 0.1
 
-    def test_confidence_interval(self):
-        """Test confidence interval computation."""
-        ci = compute_confidence_interval(self.raker, "age", 0.95)
-        lower, upper = ci
+    def test_calibration_gap_is_exact_and_the_ratio_is_finite(self):
+        """Replaces test_confidence_interval, which could not fail.
 
-        assert lower < upper
-        assert 0 <= lower <= 1
-        assert 0 <= upper <= 1
-
-        # Estimate should be within CI
-        margins = self.raker.margins
-        assert lower <= margins["age"] <= upper
+        It asserted ``lower < upper``, both bounds in [0, 1], and that the
+        estimate lay inside its own interval -- all true of any interval of the
+        form ``x +/- z*se``. The interval it tested has been removed; a raked
+        margin is aimed at a target supplied as known.
+        """
+        (cal,) = [c for c in margin_calibration(self.raker) if c.feature == "age"]
+        assert cal.gap == pytest.approx(cal.estimate - cal.target)
+        assert cal.std_error >= 0
+        assert np.isfinite(cal.gap_ratio)
 
     def test_margin_estimates(self):
         """Test comprehensive margin estimates."""
-        estimates = get_margin_estimates(self.raker, confidence_level=0.95)
+        estimates = margin_calibration(self.raker)
 
         assert len(estimates) == 3  # Three features
         for est in estimates:
             assert est.feature in ["age", "gender", "education"]
             assert 0 <= est.estimate <= 1
             assert est.std_error > 0
-            assert est.ci_lower <= est.estimate <= est.ci_upper
+            # gap is exact arithmetic; the ratio is what tells a user whether
+            # calibration arrived relative to the margin's own noise.
+            assert est.gap == pytest.approx(est.estimate - est.target)
+            assert est.gap_ratio >= 0
 
     def test_feasibility_check(self):
         """Test target feasibility checking."""
@@ -345,15 +347,21 @@ class TestSensitivityAnalysis:
             observations,
             targets,
             learning_rates=[1.0, 5.0],
-            n_steps_values=[1, 3],
+            n_sgd_steps_values=[1, 3],
             min_weights=[1e-3],
             max_weights=[100.0],
-            seeds=[42],
         )
 
-        assert len(report.results) > 0
-        assert "learning_rate" in report.best_params
-        assert "n_steps" in report.best_params
+        assert len(report.results) == 4
+        # The keys are the raker's own argument names, so the winning
+        # configuration can be handed straight back without translation.
+        assert set(report.best_params) == {
+            "learning_rate",
+            "n_sgd_steps",
+            "min_weight",
+            "max_weight",
+        }
+        OnlineRakingSGD(targets, **report.best_params)
 
     def test_quick_sensitivity_check(self):
         """Test quick sensitivity check."""
@@ -416,8 +424,8 @@ class TestEdgeCases:
         se = estimate_margin_std_error(raker, "age")
         assert np.isnan(se)
 
-        ci = compute_confidence_interval(raker, "age")
-        assert np.isnan(ci[0]) and np.isnan(ci[1])
+        (cal,) = margin_calibration(raker)
+        assert np.isnan(cal.std_error)
 
     def test_batch_ipf_empty_data(self):
         """Test batch IPF with empty data."""
@@ -429,13 +437,20 @@ class TestEdgeCases:
         assert np.isnan(ipf.loss)
 
     def test_single_observation(self):
-        """Test with single observation."""
+        """Test with single observation.
+
+        The variance assertion was ``var >= 0`` with the comment "Should be
+        defined". It is not defined: one observation cannot be split into two
+        replicate groups, so there is nothing to measure a spread over. It
+        previously returned 0.0, which passed this assertion and produced a
+        zero-width 95% interval downstream.
+        """
         targets = Targets(age=0.5)
         raker = OnlineRakingSGD(targets)
         raker.partial_fit({"age": 1})
 
         var = estimate_margin_variance(raker, "age")
-        assert var >= 0  # Should be defined
+        assert np.isnan(var)
 
         report = check_target_feasibility(raker)
         # Single observation may not be feasible

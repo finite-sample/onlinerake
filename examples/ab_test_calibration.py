@@ -30,10 +30,7 @@ Example output shows:
 import numpy as np
 
 from onlinerake import OnlineRakingSGD, Targets
-from onlinerake.diagnostics import compute_design_effect
-from onlinerake.streaming_inference import (
-    compute_confidence_sequence,
-)
+from onlinerake.diagnostics import compute_design_effect, margin_calibration
 
 
 def simulate_ab_test(
@@ -326,20 +323,11 @@ def run_ab_test_example() -> None:
     print("STREAMING INFERENCE: Real-time Monitoring")
     print("-" * 70)
 
-    conf_seq = compute_confidence_sequence(
-        raker, "is_power_user", confidence_level=0.95
-    )
-    if conf_seq.times:
-        print("\n🎯 Confidence Sequence (is_power_user balance):")
-        print(
-            f"   Final 95% CI: [{conf_seq.lower_bounds[-1]:.3f}, {conf_seq.upper_bounds[-1]:.3f}]"
-        )
-        target_in_ci = (
-            conf_seq.lower_bounds[-1]
-            <= targets["is_power_user"]
-            <= conf_seq.upper_bounds[-1]
-        )
-        print(f"   Target in CI: {target_in_ci}")
+    for cal in margin_calibration(raker):
+        if cal.feature == "is_power_user":
+            print("\n🎯 Calibration (is_power_user):")
+            print(f"   Target {cal.target:.3f}, achieved {cal.estimate:.3f}")
+            print(f"   Gap {cal.gap:+.4f}, gap/se {cal.gap_ratio:.2f}")
 
     print("\n" + "=" * 70)
     print("KEY INSIGHTS FOR A/B TEST CALIBRATION:")

@@ -209,13 +209,13 @@ def main():
     learning_rates = [2.0, 1.0, 0.5, 0.3, 0.1]
 
     print(
-        f"{'LR':>6} {'n_steps':>8} {'KL from IPF':>14} {'Max Diff':>12} {'ESS Ratio':>12}"
+        f"{'LR':>6} {'n_sgd_steps':>12} {'KL from IPF':>14} {'Max Diff':>12} {'ESS Ratio':>12}"
     )
     print("-" * 54)
 
     for lr in learning_rates:
-        n_steps = max(3, int(10 / lr))
-        mwu_test = OnlineRakingMWU(targets, learning_rate=lr, n_sgd_steps=n_steps)
+        n_sgd_steps = max(3, int(10 / lr))
+        mwu_test = OnlineRakingMWU(targets, learning_rate=lr, n_sgd_steps=n_sgd_steps)
         for obs in observations:
             mwu_test.partial_fit(obs)
 
@@ -226,7 +226,8 @@ def main():
         ess_ratio = mwu_test.effective_sample_size / ipf.effective_sample_size
 
         print(
-            f"{lr:>6.2f} {n_steps:>8} {kl:>14.6f} {max_diff:>12.4f} {ess_ratio:>12.3f}"
+            f"{lr:>6.2f} {n_sgd_steps:>12} {kl:>14.6f} "
+            f"{max_diff:>12.4f} {ess_ratio:>12.3f}"
         )
 
     print()
@@ -243,7 +244,9 @@ def main():
     print()
 
     n_features = len(targets.feature_names)
-    suggested_lr = optimal_mwu_learning_rate(n_obs=n_obs, n_features=n_features)
+    suggested_lr = optimal_mwu_learning_rate(
+        n_observations=n_obs, n_features=n_features
+    )
 
     print(f"For n_obs={n_obs}, n_features={n_features}:")
     print(f"  Suggested learning rate: {suggested_lr:.3f}")

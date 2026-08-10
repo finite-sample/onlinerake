@@ -47,8 +47,38 @@ jobs:
     - name: Run pydoclint docstring checking
       run: uv run pydoclint onlinerake/
 
+    # Nothing ran the docstring examples until now, and 22 of them were broken:
+    # undefined names, missing expected output, sklearn imports the package does
+    # not depend on, and a Targets example that raised KeyError. An example a
+    # user copies has to be an example that runs.
+    - name: Run docstring examples
+      run: uv run pytest --doctest-modules onlinerake/ -v
+
+    # Nothing ran the files in examples/ either. Two of the five were broken:
+    # one called a keyword that never existed on the raker, and one used a
+    # keyword this release renamed. Both are the first thing a new user runs.
+    # Five and a half seconds for all of them.
+    - name: Run the bundled examples
+      run: |
+        for example in examples/*.py; do
+          case "$example" in */__init__.py) continue ;; esac
+          echo "::group::$example"
+          uv run python "$example" > /dev/null
+          echo "::endgroup::"
+        done
+
+    # Every test file except the Monte Carlo studies, which get their own step.
+    # Naming files explicitly is how test_new_features.py,
+    # test_theoretical_features.py, test_model_assisted.py and
+    # test_mwu_ipf_equivalence.py went unrun in CI entirely.
     - name: Run tests with coverage
-      run: uv run pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term --cov-report=xml
+      run: uv run pytest tests/ --ignore=tests/test_inference_coverage.py -v --cov=onlinerake --cov-report=term --cov-report=xml
+
+    # Monte Carlo studies of the shipped confidence sequence, margin interval
+    # and GREG estimator. Separate step because it is minutes rather than
+    # seconds, and because a coverage study that CI never runs is not a test.
+    - name: Run Monte Carlo inference studies
+      run: uv run pytest tests/test_inference_coverage.py -v
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.12'

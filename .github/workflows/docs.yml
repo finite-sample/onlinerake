@@ -4,25 +4,26 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages"
+  group: docs-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   docs:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    # Job-level, not workflow-level: `permissions:` grants above the repository
+    # default, and the default here is read-only.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install uv
       uses: astral-sh/setup-uv@v7.1.4
       with:
@@ -38,16 +39,24 @@ jobs:
         cd docs
         # Execute notebooks first to ensure they work and generate outputs
         uv run jupyter nbconvert --to notebook --execute notebooks/01_getting_started.ipynb --inplace
-        uv run jupyter nbconvert --to notebook --execute notebooks/02_performance_comparison.ipynb --inplace  
+        uv run jupyter nbconvert --to notebook --execute notebooks/02_performance_comparison.ipynb --inplace
         uv run jupyter nbconvert --to notebook --execute notebooks/03_advanced_diagnostics.ipynb --inplace
         # Build docs with executed notebooks
         uv run sphinx-build -b html . _build/html
+
+    # Deploy only from main. The three steps below are what needs the
+    # `github-pages` environment, and that environment carries a branch policy,
+    # so a pull request cannot reach them. Guarding the steps -- rather than
+    # declaring `environment:` on the job -- is what lets a PR still build.
     - name: Setup Pages
-      uses: actions/configure-pages@v5
+      uses: actions/configure-pages@v6
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v5
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       with:
         path: 'docs/_build/html'
     - name: Deploy to GitHub Pages
       id: deployment
-      uses: actions/deploy-pages@v4
+      uses: actions/deploy-pages@v5
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'

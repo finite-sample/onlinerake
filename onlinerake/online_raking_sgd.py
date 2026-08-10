@@ -68,17 +68,30 @@ class OnlineRakingSGD:
         history: List of historical states after each update.
 
     Examples:
-        >>> # General features
         >>> targets = Targets(owns_car=0.4, is_subscriber=0.2)
         >>> raker = OnlineRakingSGD(targets, learning_rate=5.0)
-        >>> raker.partial_fit({'owns_car': 1, 'is_subscriber': 0})
-        >>> print(f"Loss: {raker.loss:.4f}")
 
-        >>> # Process multiple observations
+        One observation cannot be reweighted into two different margins, so the
+        loss after it is just how far that single respondent sits from target:
+
+        >>> raker.partial_fit({"owns_car": 1, "is_subscriber": 0})
+        >>> print(f"{raker.loss:.4f}")
+        0.4000
+
+        Feed it a stream and the margins converge on the targets:
+
+        >>> stream = [
+        ...     {"owns_car": 1, "is_subscriber": 0},
+        ...     {"owns_car": 0, "is_subscriber": 1},
+        ...     {"owns_car": 1, "is_subscriber": 1},
+        ...     {"owns_car": 0, "is_subscriber": 0},
+        ... ] * 5
         >>> for obs in stream:
         ...     raker.partial_fit(obs)
-        ...     if raker.converged:
-        ...         break
+        >>> {name: round(value, 2) for name, value in raker.margins.items()}
+        {'is_subscriber': 0.22, 'owns_car': 0.4}
+        >>> raker.loss < 1e-3
+        True
 
     Raises:
         ValueError: If any parameter is invalid (negative learning rate, invalid
@@ -213,11 +226,18 @@ class OnlineRakingSGD:
             Array of shape (n_obs,) containing current weights.
 
         Examples:
-            >>> raker = OnlineRakingSGD(targets)
-            >>> raker.partial_fit({'feature_a': 1, 'feature_b': 0})
-            >>> weights = raker.weights
-            >>> print(weights.shape)
+            >>> raker = OnlineRakingSGD(Targets(feature_a=0.5, feature_b=0.5))
+            >>> raker.partial_fit({"feature_a": 1, "feature_b": 0})
+            >>> raker.weights.shape
             (1,)
+
+            A copy, not a view -- writing to what you get back cannot corrupt
+            the raker's state:
+
+            >>> taken = raker.weights
+            >>> taken[0] = 99.0
+            >>> bool(raker.weights[0] == 99.0)
+            False
         """
         return self._weights[: self._n_obs].copy()
 
@@ -291,11 +311,30 @@ class OnlineRakingSGD:
             Lower values indicate better calibration to targets.
 
         Examples:
-            >>> # Perfect calibration would have loss near 0
-            >>> raker = OnlineRakingSGD(targets)
-            >>> # Process many observations...
-            >>> if raker.loss < 0.001:
-            ...     print("Well calibrated")
+            NaN before any observation, not zero: an unfitted raker is not
+            perfectly calibrated, it is uncalibrated.
+
+            >>> raker = OnlineRakingSGD(Targets(female=0.5))
+            >>> import math
+            >>> math.isnan(raker.loss)
+            True
+
+            >>> for obs in [{"female": 1}, {"female": 0}] * 10:
+            ...     raker.partial_fit(obs)
+            >>> raker.loss < 1e-3
+            True
+
+            Small but not zero, on a stream whose *unweighted* margin is
+            already exactly the target. An online raker reacts to each
+            observation as it arrives rather than solving the whole sample at
+            once, so the last one here leaves the margin slightly off 0.5. The
+            gap closes as the stream grows; it does not vanish at any n.
+
+            >>> longer = OnlineRakingSGD(Targets(female=0.5))
+            >>> for obs in [{"female": 1}, {"female": 0}] * 50:
+            ...     longer.partial_fit(obs)
+            >>> longer.loss < raker.loss
+            True
         """
         if self._n_obs == 0:
             return np.nan
@@ -658,6 +697,30 @@ class OnlineRakingSGD:
         """
         return dict.fromkeys(self._feature_names, np.nan)
 
+    def _replay(self, i: int) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Reconstruct the ``partial_fit`` call that produced observation ``i``.
+
+        Replication variance re-runs the calibration on subsets, and a replicate
+        is only an estimate of *this* estimator if it is fitted the same way. A
+        base raker consumes nothing but the demographic row, so the row is the
+        whole call.
+
+        **A subclass that reads more of the observation must override this.**
+        Not doing so does not fail loudly -- the replicate fits a slightly
+        different algorithm and returns a plausible number -- which is why
+        ``ModelAssistedRaker`` overrides it and why the tests assert that a
+        replicate over every index reproduces the parent exactly.
+
+        Args:
+            i: Position of the observation, in arrival order.
+
+        Returns:
+            tuple: The observation dict, and the keyword arguments it was
+            originally fitted with.
+        """
+        obs = dict(zip(self._feature_names, self._features[i], strict=True))
+        return obs, {}
+
     def _extract_feature_values(self, obs: dict[str, Any] | Any) -> np.ndarray:
         """Extract feature values from observation in correct order.
 
@@ -796,12 +859,23 @@ class OnlineRakingSGD:
             None. Updates internal state for all observations.
 
         Examples:
+            A convenience, not a different algorithm. The Note below says this
+            runs sequentially; here is that claim as an assertion -- batch and
+            one-at-a-time give bit-identical weights.
+
             >>> observations = [
-            ...     {'feature_a': 1, 'feature_b': 0},
-            ...     {'feature_a': 0, 'feature_b': 1},
-            ...     {'feature_a': 1, 'feature_b': 1},
+            ...     {"feature_a": 1, "feature_b": 0},
+            ...     {"feature_a": 0, "feature_b": 1},
+            ...     {"feature_a": 1, "feature_b": 1},
             ... ]
-            >>> raker.partial_fit_batch(observations)
+            >>> targets = Targets(feature_a=0.5, feature_b=0.5)
+            >>> batched = OnlineRakingSGD(targets)
+            >>> batched.partial_fit_batch(observations)
+            >>> one_at_a_time = OnlineRakingSGD(targets)
+            >>> for obs in observations:
+            ...     one_at_a_time.partial_fit(obs)
+            >>> bool((batched.weights == one_at_a_time.weights).all())
+            True
 
         Note:
             Currently processes observations sequentially. Future versions
@@ -809,6 +883,3 @@ class OnlineRakingSGD:
         """
         for obs in observations:
             self.partial_fit(obs)
-
-    # Backward compatibility aliases
-    fit_one = partial_fit

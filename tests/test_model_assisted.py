@@ -661,3 +661,154 @@ class TestStreamingVsBatch:
         streaming_greg = raker.model_assisted_estimate
 
         assert abs(streaming_greg - batch_greg) < 0.2
+
+
+class TestReplicatesRefitTheSameEstimator:
+    """A replicate over *every* index must reproduce the parent exactly.
+
+    This is the sharpest statement of what a replication variance assumes. The
+    scheme leaves some observations out to see how the estimate moves; that is
+    only informative if leaving none out moves it not at all. If the full-index
+    replicate differs, every subset replicate is measuring a different
+    estimator and the variance describes something the caller never fitted.
+
+    Both cases below were live defects, found by review rather than by these
+    tests, because the replicate still calibrated and still returned a
+    plausible number. Nothing raised.
+    """
+
+    @staticmethod
+    def _income_model():
+        """A model that genuinely depends on a covariate outside the targets."""
+        rng = np.random.default_rng(0)
+        female = rng.integers(0, 2, 200).astype(float)
+        college = rng.integers(0, 2, 200).astype(float)
+        income = rng.normal(50, 10, 200)
+        outcome = 0.1 * female + 0.1 * college + 0.02 * income
+        design = np.column_stack([female, college, income])
+        model = LinearOutcomeModel().fit(design, outcome)
+        # Guard the guard: if income carried no weight the test below could
+        # pass while dropping it. An earlier version of this fixture fitted a
+        # coefficient of exactly zero and proved nothing.
+        assert abs(model.coef_[2]) > 1e-3
+        return model
+
+    def test_greg_replicate_keeps_covariates_outside_the_targets(self):
+        """``feature_names_in_obs`` may name inputs that are not targets.
+
+        Those live nowhere on the raker except the model-input array, so a
+        replicate rebuilt from the demographic row alone fed the model zero for
+        income and predicted from a different design matrix.
+        """
+        from onlinerake.model_assisted import _refit_greg
+
+        targets = ModelAssistedTargets(
+            demographic_targets=Targets(female=0.5, college=0.5),
+            prediction_targets={"pred": 1.0},
+        )
+        raker = ModelAssistedRaker(
+            targets,
+            self._income_model(),
+            feature_names_in_obs=["female", "college", "income"],
+        )
+        for i in range(60):
+            raker.partial_fit(
+                {
+                    "female": float(i % 2),
+                    "college": float(i % 3 == 0),
+                    "income": 40.0 + i,
+                },
+                outcome=float(i % 2),
+            )
+
+        full = _refit_greg(raker, np.arange(raker._n_obs))
+        assert full == pytest.approx(float(raker.model_assisted_estimate))
+
+    def test_margin_replicate_keeps_the_outcomes_the_penalty_needs(self):
+        """``residual_weight`` conditions the gradient on an outcome existing.
+
+        Replaying rows without outcomes silently switched the penalty off, so
+        the replicate minimised a different objective.
+        """
+        from onlinerake.diagnostics import _refit_margins
+
+        rng = np.random.default_rng(0)
+        female = rng.integers(0, 2, 200).astype(float)
+        college = rng.integers(0, 2, 200).astype(float)
+        model = LinearOutcomeModel().fit(
+            np.column_stack([female, college]), 0.3 * female + 0.4 * college
+        )
+        targets = ModelAssistedTargets(
+            demographic_targets=Targets(female=0.5, college=0.5),
+            prediction_targets={"pred": 0.5},
+        )
+        raker = ModelAssistedRaker(targets, model, residual_weight=2.0)
+        for i in range(60):
+            raker.partial_fit(
+                {"female": float(i % 2), "college": float(i % 3 == 0)},
+                outcome=float(i % 2),
+            )
+        assert raker._has_outcomes[: raker._n_obs].all()
+
+        full = _refit_margins(raker, np.arange(raker._n_obs))
+        for name, value in raker.margins.items():
+            assert full[name] == pytest.approx(value)
+
+    def test_the_plain_raker_replays_exactly_too(self):
+        """The base class shares the machinery, so it is asserted here as well.
+
+        Without this, a `_replay` that returned nothing useful would still pass
+        the two tests above once they were fixed for the subclass alone.
+        """
+        from onlinerake import OnlineRakingSGD
+        from onlinerake.diagnostics import _refit_margins
+
+        raker = OnlineRakingSGD(Targets(female=0.5, college=0.5))
+        for i in range(40):
+            raker.partial_fit({"female": i % 2, "college": i % 3 == 0})
+
+        full = _refit_margins(raker, np.arange(raker._n_obs))
+        for name, value in raker.margins.items():
+            assert full[name] == pytest.approx(value)
+
+
+class TestArgumentValidationDoesNotDependOnSampleSize:
+    """An illegal argument is illegal at every n.
+
+    `model_assisted_confidence_interval` computed the standard error first and
+    returned `(nan, nan)` when it was not finite, so `_z_score` -- the only
+    thing that validates `confidence_level` -- was never reached below two
+    observations. `confidence_level=2` therefore raised at n=5 and returned
+    `(nan, nan)` at n=1: one call, two contracts, decided by how much data
+    happened to be present.
+    """
+
+    @staticmethod
+    def _raker(n):
+        model = LinearOutcomeModel().fit(
+            np.array([[0.0, 0.0], [1.0, 1.0]]), np.array([0.0, 1.0])
+        )
+        targets = ModelAssistedTargets(
+            demographic_targets=Targets(a=0.5, b=0.5),
+            prediction_targets={"p": 0.5},
+        )
+        raker = ModelAssistedRaker(targets, model)
+        for i in range(n):
+            raker.partial_fit({"a": i % 2, "b": 0}, outcome=i % 2)
+        return raker
+
+    @pytest.mark.parametrize("n", [1, 5])
+    def test_an_impossible_confidence_level_always_raises(self, n):
+        from onlinerake.model_assisted import model_assisted_confidence_interval
+
+        with pytest.raises(ValueError, match="confidence_level"):
+            model_assisted_confidence_interval(self._raker(n), confidence_level=2)
+
+    def test_a_legal_level_at_n_equals_one_still_returns_nan(self):
+        """The falsifier. Validating early must not turn the unestimable case
+        into an exception -- ``(nan, nan)`` there is deliberate.
+        """
+        from onlinerake.model_assisted import model_assisted_confidence_interval
+
+        low, high = model_assisted_confidence_interval(self._raker(1))
+        assert np.isnan(low) and np.isnan(high)

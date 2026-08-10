@@ -222,7 +222,7 @@ def run_recommendation_example() -> None:
     mwu_raker = OnlineRakingMWU(
         targets,
         learning_rate=1.0,
-        n_steps=3,
+        n_sgd_steps=3,
         track_convergence=True,
     )
 

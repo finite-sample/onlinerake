@@ -43,8 +43,13 @@ def kl_divergence_weights(
     Examples:
         >>> w1 = np.array([1.0, 1.0, 1.0])
         >>> w2 = np.array([1.0, 2.0, 1.0])
-        >>> kl = kl_divergence_weights(w2, w1)
-        >>> print(f"KL divergence: {kl:.4f}")
+        >>> print(f"{kl_divergence_weights(w2, w1):.4f}")
+        0.0589
+
+        The asymmetry the note below describes, shown rather than asserted:
+
+        >>> print(f"{kl_divergence_weights(w1, w2):.4f}")
+        0.0566
 
     Note:
         KL divergence is asymmetric: D_KL(p || q) != D_KL(q || p).
@@ -102,8 +107,13 @@ def total_variation_weights(
     Examples:
         >>> w1 = np.array([1.0, 1.0, 1.0])
         >>> w2 = np.array([1.0, 2.0, 1.0])
-        >>> tv = total_variation_weights(w1, w2)
-        >>> print(f"Total variation: {tv:.4f}")
+        >>> print(f"{total_variation_weights(w1, w2):.4f}")
+        0.1667
+
+        Symmetric, unlike :func:`kl_divergence_weights`:
+
+        >>> print(f"{total_variation_weights(w2, w1):.4f}")
+        0.1667
     """
     if len(w1) == 0 or len(w2) == 0:
         return 0.0

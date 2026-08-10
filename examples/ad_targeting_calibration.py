@@ -34,12 +34,9 @@ from onlinerake import (
     Targets,
 )
 from onlinerake.convergence import analyze_convergence, verify_robbins_monro
-from onlinerake.diagnostics import summarize_raking_results
+from onlinerake.diagnostics import margin_calibration, summarize_raking_results
 from onlinerake.learning_rate import robbins_monro_schedule
-from onlinerake.streaming_inference import (
-    analyze_estimate_stability,
-    compute_confidence_sequence,
-)
+from onlinerake.streaming_inference import analyze_estimate_stability
 
 
 def simulate_ad_impressions(
@@ -276,17 +273,33 @@ def run_ad_calibration_example() -> None:
         for w in convergence.warnings:
             print(f"      - {w}")
 
-    # Confidence sequence
-    conf_seq = compute_confidence_sequence(sgd_raker, "is_young", confidence_level=0.95)
-    if conf_seq.times:
-        final_lower = conf_seq.lower_bounds[-1]
-        final_upper = conf_seq.upper_bounds[-1]
-        print("\n🎯 Confidence Sequence (is_young, 95%):")
-        print(f"   Final Interval: [{final_lower:.3f}, {final_upper:.3f}]")
-        print(f"   Width: {final_upper - final_lower:.3f}")
-        print(
-            f"   Target ({targets['is_young']:.2f}) in interval: {final_lower <= targets['is_young'] <= final_upper}"
-        )
+    # How close did calibration actually get? Not a confidence interval: the
+    # margin is aimed at a target supplied as known, so the question is whether
+    # the raker arrived, not how uncertain the destination is.
+    for cal in margin_calibration(sgd_raker):
+        if cal.feature == "is_young":
+            print("\n🎯 Calibration (is_young):")
+            print(f"   Target: {cal.target:.3f}   Achieved: {cal.estimate:.3f}")
+            print(f"   Gap: {cal.gap:+.4f}   Run-to-run SE: {cal.std_error:.4f}")
+            # gap_ratio is reported, not thresholded. At fixed calibration
+            # effort its numerator is flat in the stream length while its
+            # denominator falls, so it rises with n on an unchanged raker --
+            # 3.26, 4.56, 7.02, 16.26 at n = 250, 1000, 4000, 12000. A "< 1
+            # means arrived" rule therefore calls the same calibration worse
+            # simply because more observations turned up. That cutoff was
+            # withdrawn from MarginCalibration; this line used to apply it
+            # anyway.
+            print(f"   gap/se: {cal.gap_ratio:.2f}   (no absolute threshold)")
+            print(
+                f"   unclosed: {cal.unclosed_fraction:.1%} of the initial "
+                "miscalibration remains",
+                end="   ",
+            )
+            print(
+                "(arrived)"
+                if cal.unclosed_fraction < 0.05
+                else "(stopped short -- raise learning_rate * n_sgd_steps)"
+            )
 
     # Estimate stability
     stability = analyze_estimate_stability(sgd_raker, window=100)

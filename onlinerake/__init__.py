@@ -18,39 +18,58 @@ Features can represent product preferences, behaviors, medical conditions,
 or any binary characteristics you need to calibrate.
 
 Examples:
-    >>> from onlinerake import OnlineRakingSGD, OnlineRakingMWU, Targets
-
-    >>> # Product preference calibration
+    >>> from onlinerake import OnlineRakingSGD, Targets
     >>> targets = Targets(owns_car=0.4, is_subscriber=0.2, likes_coffee=0.7)
-    >>> sgd_raker = OnlineRakingSGD(targets, learning_rate=5.0)
-    >>>
-    >>> # Process observations one at a time
-    >>> for obs in stream:
-    ...     sgd_raker.partial_fit(obs)
-    ...     if sgd_raker.converged:
-    ...         break
-    >>>
-    >>> # Inspect current state
-    >>> print(f"Loss: {sgd_raker.loss:.6f}")
-    >>> print(f"Margins: {sgd_raker.margins}")
-    >>> print(f"ESS: {sgd_raker.effective_sample_size:.1f}")
+    >>> raker = OnlineRakingSGD(targets, learning_rate=5.0)
 
-    >>> # Medical survey calibration with MWU
-    >>> medical_targets = Targets(has_diabetes=0.08, exercises=0.35, smoker=0.15)
-    >>> mwu_raker = OnlineRakingMWU(medical_targets, learning_rate=1.0)
-    >>> mwu_raker.partial_fit({'has_diabetes': 0, 'exercises': 1, 'smoker': 0})
+    Feed it observations one at a time, in whatever order they arrive:
+
+    >>> stream = [
+    ...     {
+    ...         "owns_car": i % 2,
+    ...         "is_subscriber": (i % 5) == 0,
+    ...         "likes_coffee": (i % 3) != 0,
+    ...     }
+    ...     for i in range(60)
+    ... ]
+    >>> for obs in stream:
+    ...     raker.partial_fit(obs)
+
+    Every quantity is readable at any point in the stream, not only at the end:
+
+    >>> {name: round(value, 2) for name, value in raker.margins.items()}
+    {'is_subscriber': 0.19, 'likes_coffee': 0.7, 'owns_car': 0.42}
+    >>> raker.loss < 1e-3
+    True
+    >>> round(raker.effective_sample_size, 1)
+    45.1
 
 Performance:
-    - **High throughput**: 3000-6000 observations per second
-    - **Memory efficient**: O(n) memory with capacity doubling
-    - **Scalable**: Performance independent of number of observations
-    - **Flexible**: Works with any number of binary features
+    "Streaming" here describes how data *arrives*, not the cost of taking it.
+    Each observation re-solves the calibration over everything seen so far --
+    ``partial_fit`` rewrites all ``n`` accumulated weights and the gradient is
+    itself ``O(n)`` -- so per-observation cost is ``Theta(n * n_sgd_steps)``
+    and a full pass is quadratic in the stream length.
 
-Note:
-    This is version 1.0.0 with breaking changes. The old demographic-specific
-    interface has been removed in favor of a general feature interface.
-    Users must explicitly specify their features and target proportions.
+    Measured on one machine, three binary features, default settings:
+
+    ======  ===========  ============
+    n       time/obs     obs/sec
+    ======  ===========  ============
+    2,500       104 us         9,645
+    10,000      222 us         4,508
+    40,000      645 us         1,551
+    ======  ===========  ============
+
+    Absolute rates are hardware-specific; the trend is not. Fitted exponent on
+    total time over that range is 1.66. Plan for tens of thousands of
+    observations per stream, not millions, and prefer
+    :class:`BatchIPF` when the whole sample is already in hand.
+
+    Memory is ``O(n)`` with capacity doubling, so it is the compute that binds.
 """
+
+from importlib.metadata import version
 
 from .batch_ipf import BatchIPF
 from .convergence import (
@@ -67,18 +86,18 @@ from .diagnostics import (
     FeasibilityReport,
     InfeasibilityAnalysis,
     IPFComparison,
-    MarginEstimate,
+    MarginCalibration,
     analyze_infeasibility,
     check_target_feasibility,
     compare_to_ipf,
-    compute_confidence_interval,
     compute_design_effect,
     compute_weight_efficiency,
     estimate_margin_std_error,
     estimate_margin_variance,
     explain_infeasibility_causes,
-    get_margin_estimates,
+    margin_calibration,
     optimal_mwu_learning_rate,
+    resolve_replication_method,
     suggest_feasible_targets,
     summarize_raking_results,
 )
@@ -101,6 +120,9 @@ from .model_assisted import (
     PoststratificationCell,
     PoststratificationCells,
     StreamingMRP,
+    model_assisted_confidence_interval,
+    model_assisted_std_error,
+    model_assisted_variance,
 )
 from .models import (
     ExternalModelWrapper,
@@ -117,12 +139,10 @@ from .sensitivity import (
     run_sensitivity_analysis,
 )
 from .streaming_inference import (
-    ConfidenceSequence,
     RetroactiveImpact,
     StreamingEstimator,
     StreamingSnapshot,
     analyze_estimate_stability,
-    compute_confidence_sequence,
     estimate_path_dependent_variance,
     explain_streaming_semantics,
 )
@@ -151,14 +171,14 @@ __all__ = [
     "mwu_convergence_analysis",
     "verify_convergence_conditions",
     # Diagnostics and variance estimation
-    "MarginEstimate",
+    "MarginCalibration",
     "FeasibilityReport",
     "InfeasibilityAnalysis",
     "IPFComparison",
     "estimate_margin_variance",
     "estimate_margin_std_error",
-    "compute_confidence_interval",
-    "get_margin_estimates",
+    "margin_calibration",
+    "resolve_replication_method",
     "check_target_feasibility",
     "analyze_infeasibility",
     "suggest_feasible_targets",
@@ -174,10 +194,8 @@ __all__ = [
     "symmetric_kl_divergence",
     # Streaming inference
     "StreamingSnapshot",
-    "ConfidenceSequence",
     "RetroactiveImpact",
     "StreamingEstimator",
-    "compute_confidence_sequence",
     "estimate_path_dependent_variance",
     "explain_streaming_semantics",
     "analyze_estimate_stability",
@@ -193,9 +211,12 @@ __all__ = [
     "ExternalModelWrapper",
     "ModelAssistedTargets",
     "ModelAssistedRaker",
+    "model_assisted_variance",
+    "model_assisted_std_error",
+    "model_assisted_confidence_interval",
     "PoststratificationCell",
     "PoststratificationCells",
     "StreamingMRP",
 ]
 
-__version__ = "1.4.0"
+__version__ = version("onlinerake")
