@@ -295,6 +295,22 @@ def _unfitted_copy[RakerT: "OnlineRakingSGD"](raker: RakerT) -> RakerT:
         if isinstance(value, np.ndarray):
             setattr(replicate, name, value.copy())
 
+    # The schedule is an object, and `copy.copy` shares it. The three shipped
+    # schedules are stateless -- they compute from the ``t`` they are handed, so
+    # a replicate restarts naturally -- but `LearningRateSchedule` is a public
+    # extension point and a stateful implementation is legal. Sharing one let a
+    # replicate advance the *parent's* schedule: measured on a counter-based
+    # schedule, `estimate_margin_variance` took the parent's call count from 31
+    # to 301. Measuring a raker must not change it.
+    #
+    # Deep-copied rather than reset, because the protocol offers no general way
+    # to rebuild a schedule in its initial state. For the shipped schedules that
+    # is exactly equivalent; for a stateful custom one the replicate inherits
+    # the parent's current state rather than restarting, which is a limitation
+    # worth knowing rather than a silent difference.
+    if getattr(replicate, "_lr_schedule", None) is not None:
+        replicate._lr_schedule = copy.deepcopy(raker._lr_schedule)
+
     replicate._n_obs = 0
     replicate.history = []
     replicate._loss_history = []

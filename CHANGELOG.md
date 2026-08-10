@@ -106,6 +106,22 @@ lives on the quantity that can carry it.
 - **CI now runs the docstring examples** (`pytest --doctest-modules onlinerake/`).
 
 ### Fixed
+- **Measuring a raker's variance could change the raker.** `_unfitted_copy`
+  uses `copy.copy`, which shares every non-array attribute — including
+  `_lr_schedule`. The three shipped schedules are stateless, computing from the
+  `t` they are handed, so nothing showed. But `LearningRateSchedule` is a public
+  extension point and a stateful implementation is legal, and sharing one meant
+  every replicate advanced the *parent's* schedule: on a counter-based
+  schedule, one `estimate_margin_variance` call took the parent's call count
+  from 31 to 301. The schedule is deep-copied now.
+
+  `AdaptiveLR` is **not** affected — its `__call__` only reads `_current_lr`;
+  the mutation lives in `update()`, which the rakers never call.
+
+  Deep-copied rather than reset to initial state, because the protocol offers
+  no general way to rebuild a schedule fresh. For the shipped schedules the two
+  are identical; for a stateful custom one the replicate inherits the parent's
+  current state, which the code says out loud rather than leaving implicit.
 - **`OnlineRakingMWU` accepted a learning-rate schedule and never stepped it.**
   It stored the schedule and reported `uses_lr_schedule is True`, but its
   update read `self.learning_rate` directly instead of the accessor that

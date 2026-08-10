@@ -457,3 +457,86 @@ class TestGroupingDoesNotTrackArrivalOrder:
         other = estimate_margin_variance(raker, "female", seed=12345)
         assert first == again
         assert first != other
+
+
+class TestMeasuringDoesNotChangeTheRaker:
+    """A stateful learning-rate schedule must not be shared with replicates.
+
+    ``_unfitted_copy`` uses ``copy.copy``, which shares every non-array
+    attribute -- including ``_lr_schedule``. The three shipped schedules are
+    stateless, computing from the ``t`` they are handed, so nothing showed. But
+    ``LearningRateSchedule`` is public and a stateful implementation is legal,
+    and sharing one meant every replicate advanced the *parent's* schedule.
+
+    ``TestReplicationLeavesTheRakerAlone`` above asserts weights, features,
+    counts and margins survive the call. It does not look at the schedule,
+    which is why this went unnoticed.
+    """
+
+    @staticmethod
+    def _counting_schedule():
+        from onlinerake.learning_rate import LearningRateSchedule
+
+        class Counting(LearningRateSchedule):
+            """Stateful: the rate depends on how often it has been asked."""
+
+            def __init__(self):
+                self.calls = 0
+
+            def __call__(self, t: int) -> float:
+                self.calls += 1
+                return 5.0 / (1 + 0.1 * self.calls)
+
+            def get_params(self) -> dict:
+                return {"type": "counting"}
+
+        return Counting()
+
+    def test_the_parents_schedule_is_not_advanced(self):
+        """Measured before the fix: 31 calls became 301."""
+        schedule = self._counting_schedule()
+        raker = OnlineRakingSGD(Targets(a=0.5), learning_rate=schedule)
+        for i in range(30):
+            raker.partial_fit({"a": i % 2})
+
+        calls_before = schedule.calls
+        estimate_margin_variance(raker, "a")
+
+        assert schedule.calls == calls_before, (
+            f"measuring the variance advanced the raker's own schedule from "
+            f"{calls_before} to {schedule.calls}"
+        )
+
+    def test_the_replicates_still_get_a_working_schedule(self):
+        """The falsifier: handing replicates no schedule at all would satisfy
+        the test above while changing what they fit.
+        """
+        schedule = self._counting_schedule()
+        raker = OnlineRakingSGD(Targets(a=0.5), learning_rate=schedule)
+        for i in range(30):
+            raker.partial_fit({"a": i % 2})
+
+        replicate = _unfitted_copy(raker)
+        assert replicate._lr_schedule is not None
+        assert replicate._lr_schedule is not schedule
+        for i in range(5):
+            replicate.partial_fit({"a": i % 2})
+        assert replicate._lr_schedule.calls > 0
+        assert schedule.calls == 30 + 1
+
+    def test_a_stateless_schedule_is_unaffected(self):
+        """The shipped schedules restart from ``t`` regardless, so the fix must
+        not perturb the numbers they produce.
+        """
+        from onlinerake.learning_rate import PolynomialDecayLR
+
+        def variance_with_schedule():
+            raker = OnlineRakingSGD(
+                Targets(a=0.5),
+                learning_rate=PolynomialDecayLR(initial_lr=5.0, power=0.6),
+            )
+            for i in range(40):
+                raker.partial_fit({"a": i % 2})
+            return estimate_margin_variance(raker, "a")
+
+        assert variance_with_schedule() == variance_with_schedule()
