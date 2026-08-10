@@ -697,6 +697,30 @@ class OnlineRakingSGD:
         """
         return dict.fromkeys(self._feature_names, np.nan)
 
+    def _replay(self, i: int) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Reconstruct the ``partial_fit`` call that produced observation ``i``.
+
+        Replication variance re-runs the calibration on subsets, and a replicate
+        is only an estimate of *this* estimator if it is fitted the same way. A
+        base raker consumes nothing but the demographic row, so the row is the
+        whole call.
+
+        **A subclass that reads more of the observation must override this.**
+        Not doing so does not fail loudly -- the replicate fits a slightly
+        different algorithm and returns a plausible number -- which is why
+        ``ModelAssistedRaker`` overrides it and why the tests assert that a
+        replicate over every index reproduces the parent exactly.
+
+        Args:
+            i: Position of the observation, in arrival order.
+
+        Returns:
+            tuple: The observation dict, and the keyword arguments it was
+            originally fitted with.
+        """
+        obs = dict(zip(self._feature_names, self._features[i], strict=True))
+        return obs, {}
+
     def _extract_feature_values(self, obs: dict[str, Any] | Any) -> np.ndarray:
         """Extract feature values from observation in correct order.
 

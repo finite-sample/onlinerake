@@ -189,6 +189,17 @@ class ModelAssistedRaker(OnlineRakingSGD):
         self._outcomes: np.ndarray = np.empty(0, dtype=np.float64)
         self._has_outcomes: np.ndarray = np.empty(0, dtype=bool)
 
+        # The model's own inputs, kept because a replicate cannot rebuild them.
+        # `feature_names_in_obs` may name covariates that are not calibration
+        # targets, and those live nowhere else on the raker: `_features` holds
+        # the demographic row only. Without this a replicate silently fed the
+        # model zeros for every extra covariate and measured the variance of a
+        # different estimator. See `_replay`.
+        self._model_features_capacity: int = 0
+        self._model_features: np.ndarray = np.empty(
+            (0, len(self.feature_names_in_obs)), dtype=np.float64
+        )
+
     def _expand_capacity(self) -> None:
         """Expand capacity for base arrays plus predictions/outcomes."""
         super()._expand_capacity()
@@ -219,6 +230,53 @@ class ModelAssistedRaker(OnlineRakingSGD):
             self._outcomes = new_outcomes
             self._has_outcomes = new_has_outcomes
             self._outcomes_capacity = new_capacity
+
+        # Expand model-input array
+        if self._n_obs >= self._model_features_capacity:
+            new_capacity = max(8, self._model_features_capacity * 2, self._n_obs + 1)
+            new_model_features = np.zeros(
+                (new_capacity, len(self.feature_names_in_obs)), dtype=np.float64
+            )
+            if self._model_features_capacity > 0:
+                new_model_features[: self._model_features_capacity] = (
+                    self._model_features[: self._model_features_capacity]
+                )
+            self._model_features = new_model_features
+            self._model_features_capacity = new_capacity
+
+    def _replay(self, i: int) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Reconstruct the ``partial_fit`` call that produced observation ``i``.
+
+        This raker consumes three things the base one does not: covariates named
+        by ``feature_names_in_obs`` that are not calibration targets, the model
+        prediction built from them, and the outcome. A replicate rebuilt from
+        the demographic row alone loses all three -- extra covariates arrive as
+        zero and the residual penalty disappears, because it is conditioned on
+        an outcome being present.
+
+        Neither loss is visible in the answer. The replicate calibrates, returns
+        a number, and the variance built from it describes an estimator the
+        caller never fitted.
+
+        Demographic values take precedence where a name is in both sets. They
+        agree by construction for binary features given as 0/1 or ``bool``, and
+        for continuous ones, which is the documented input contract.
+
+        Args:
+            i: Position of the observation, in arrival order.
+
+        Returns:
+            tuple: The observation dict, carrying the model's inputs as well as
+            the demographic row, and the keyword arguments it was fitted with.
+        """
+        model_obs = dict(
+            zip(self.feature_names_in_obs, self._model_features[i], strict=True)
+        )
+        demographic_obs, kwargs = super()._replay(i)
+        model_obs.update(demographic_obs)
+        if bool(self._has_outcomes[i]):
+            kwargs["outcome"] = float(self._outcomes[i])
+        return model_obs, kwargs
 
     def _extract_model_features(
         self, obs: dict[str, Any] | Any
@@ -312,8 +370,9 @@ class ModelAssistedRaker(OnlineRakingSGD):
         model_features = self._extract_model_features(obs)
         prediction = float(self.model.predict(model_features.reshape(1, -1))[0])
 
-        # Store prediction
+        # Store prediction and the inputs that produced it
         self._predictions[self._n_obs] = prediction
+        self._model_features[self._n_obs] = model_features
 
         # Store outcome if provided
         if outcome is not None:
@@ -752,11 +811,9 @@ def _refit_greg(raker: ModelAssistedRaker, index: np.ndarray) -> float:
     from .diagnostics import _unfitted_copy
 
     replicate = _unfitted_copy(raker)
-    names = raker._feature_names
     for i in index:
-        obs = dict(zip(names, raker._features[i], strict=True))
-        outcome = float(raker._outcomes[i]) if bool(raker._has_outcomes[i]) else None
-        replicate.partial_fit(obs, outcome=outcome)
+        obs, kwargs = raker._replay(int(i))
+        replicate.partial_fit(obs, **kwargs)
     return float(replicate.model_assisted_estimate)
 
 

@@ -267,7 +267,13 @@ def _unfitted_copy[RakerT: "OnlineRakingSGD"](raker: RakerT) -> RakerT:
     # operation that forgets the slice would silently mix parent rows into a
     # replicate. Zeroing the tail turns that from a wrong number into an
     # obviously wrong one.
-    for name in ("_features", "_weights", "_outcomes", "_predictions"):
+    for name in (
+        "_features",
+        "_weights",
+        "_outcomes",
+        "_predictions",
+        "_model_features",
+    ):
         array = getattr(replicate, name, None)
         if isinstance(array, np.ndarray) and array.size:
             array[...] = 0.0
@@ -277,20 +283,27 @@ def _unfitted_copy[RakerT: "OnlineRakingSGD"](raker: RakerT) -> RakerT:
     return replicate
 
 
-def _refit_margins(raker: OnlineRakingSGD, rows: np.ndarray) -> dict[str, float]:
+def _refit_margins(raker: OnlineRakingSGD, index: np.ndarray) -> dict[str, float]:
     """Re-run the calibration on a subset of the observations.
+
+    Takes positions rather than feature rows because a row is not the whole
+    observation for every raker. ``ModelAssistedRaker`` also consumes the
+    outcome and any model covariate that is not a calibration target, and
+    replaying rows alone dropped both -- silently, since the replicate still
+    calibrates and still returns margins. :meth:`OnlineRakingSGD._replay` is
+    what knows the difference.
 
     Args:
         raker: The fitted raker, used for its class and configuration.
-        rows: Feature rows to replay, in arrival order, shape ``(m, n_features)``.
+        index: Positions of the observations to replay, in arrival order.
 
     Returns:
         dict: Weighted margins of the replicate, per feature.
     """
     replicate = _unfitted_copy(raker)
-    names = raker._feature_names
-    for row in rows:
-        replicate.partial_fit(dict(zip(names, row, strict=True)))
+    for i in index:
+        obs, kwargs = raker._replay(int(i))
+        replicate.partial_fit(obs, **kwargs)
     return replicate.margins
 
 
@@ -366,13 +379,13 @@ def _replicate_margins(
     n = raker._n_obs
     groups = max(2, min(int(n_replicates), n))
     assignment = np.arange(n) % groups
-    rows = raker._features[:n]
+    positions = np.arange(n)
     names = raker._feature_names
 
     subsets = (
-        (rows[assignment == g] for g in range(groups))
+        (positions[assignment == g] for g in range(groups))
         if method == "random_groups"
-        else (rows[assignment != g] for g in range(groups))
+        else (positions[assignment != g] for g in range(groups))
     )
     # One refit per group, not one per group and feature: a replicate already
     # carries every margin, and asking for them one at a time would recalibrate

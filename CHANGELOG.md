@@ -81,6 +81,32 @@ lives on the quantity that can carry it.
 - **CI now runs the docstring examples** (`pytest --doctest-modules onlinerake/`).
 
 ### Fixed
+- **Replicates refitted a different estimator than the one they were measuring,
+  for two supported `ModelAssistedRaker` configurations.** Both replicate paths
+  rebuilt each observation from the demographic feature row, which is not the
+  whole observation for this subclass.
+
+  When `feature_names_in_obs` named a covariate that is not a calibration
+  target, that covariate existed nowhere else on the raker, so every replicate
+  fed the model **zero** in its place and predicted from a different design.
+  And `_refit_margins` replayed no outcomes at all, so with `residual_weight >
+  0` the residual penalty — which is conditioned on an outcome being present —
+  silently switched off.
+
+  Neither failed loudly. The replicate calibrated, returned a plausible number,
+  and `model_assisted_variance`, `model_assisted_std_error`,
+  `model_assisted_confidence_interval`, `estimate_margin_variance` and
+  `margin_calibration` reported the spread of an estimator the caller never
+  fitted. Measured on a 60-observation stream: the full-index GREG replicate
+  returned 1.4710 against the parent's 0.3508, and full-index margins returned
+  0.515/0.551 against the parent's 0.0006/0.0009.
+
+  The raker now stores the model's own inputs, and both paths go through a new
+  `_replay` hook that reconstructs the original `partial_fit` call. The tests
+  assert the invariant that makes replication meaningful at all: **a replicate
+  over every index must reproduce the parent exactly.** Found by the release's
+  Codex review, not by the suite — the existing tests never used a model input
+  outside the target set or a non-zero `residual_weight`.
 - **22 of the package's docstring examples did not run.** Nothing had ever
   executed them — there was no `--doctest-modules` in the config, in CI, or in
   the test suite. They failed on undefined names (`stream`, `raker`, `data`,
