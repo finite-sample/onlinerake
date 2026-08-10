@@ -53,7 +53,7 @@ class ConvergenceAnalysis:
         satisfies_robbins_monro: Whether learning rate satisfies RM conditions.
         lipschitz_constant: Estimated Lipschitz constant of the loss gradient.
         convergence_rate: Theoretical convergence rate (if applicable).
-        expected_iterations: Expected iterations to reach tolerance.
+        expected_iterations: Expected iterations to reach ``loss_tolerance``.
         warnings: List of potential issues with convergence.
     """
 
@@ -75,9 +75,9 @@ class RobbinsMonroVerification:
     Attributes:
         condition_1_satisfied: Whether Σ η_t = ∞ is satisfied.
         condition_2_satisfied: Whether Σ η_t² < ∞ is satisfied.
-        sum_lr_estimate: Estimated sum of learning rates over T steps.
+        sum_lr_estimate: Estimated sum of learning rates over ``n_steps`` steps.
         sum_lr_sq_estimate: Estimated sum of squared learning rates.
-        T_evaluated: Number of steps used for evaluation.
+        n_steps_evaluated: Number of steps used for evaluation.
         analysis_notes: Detailed notes on the verification.
     """
 
@@ -85,13 +85,13 @@ class RobbinsMonroVerification:
     condition_2_satisfied: bool
     sum_lr_estimate: float
     sum_lr_sq_estimate: float
-    T_evaluated: int
+    n_steps_evaluated: int
     analysis_notes: list[str]
 
 
 def verify_robbins_monro(
     schedule: LearningRateSchedule | float,
-    T: int = 100000,
+    n_steps: int = 100000,
 ) -> RobbinsMonroVerification:
     """Verify Robbins-Monro conditions for a learning rate schedule.
 
@@ -109,7 +109,7 @@ def verify_robbins_monro(
 
     Args:
         schedule: Learning rate schedule or constant learning rate.
-        T: Number of steps to evaluate (for computing sum estimates).
+        n_steps: Number of steps to evaluate (for computing sum estimates).
 
     Returns:
         RobbinsMonroVerification with detailed analysis.
@@ -127,27 +127,29 @@ def verify_robbins_monro(
 
     # Handle constant float
     if isinstance(schedule, (int, float)):
-        return _verify_constant(float(schedule), T, notes)
+        return _verify_constant(float(schedule), n_steps, notes)
 
     # Analytical verification for known types
     params = schedule.get_params()
     schedule_type = params.get("type", "unknown")
 
     if schedule_type == "constant":
-        return _verify_constant(params["learning_rate"], T, notes)
+        return _verify_constant(params["learning_rate"], n_steps, notes)
 
     elif schedule_type == "polynomial_decay":
-        return _verify_polynomial(params, T, notes)
+        return _verify_polynomial(params, n_steps, notes)
 
     elif schedule_type == "inverse_time_decay":
-        return _verify_inverse_time(params, T, notes)
+        return _verify_inverse_time(params, n_steps, notes)
 
     else:
         # Unknown schedule: numerical estimation with disclaimer
-        return _verify_numerical_fallback(schedule, T, notes)
+        return _verify_numerical_fallback(schedule, n_steps, notes)
 
 
-def _verify_constant(lr: float, T: int, notes: list[str]) -> RobbinsMonroVerification:
+def _verify_constant(
+    lr: float, n_steps: int, notes: list[str]
+) -> RobbinsMonroVerification:
     """Constant LR: sum diverges (✓), squared sum diverges (✗)."""
     notes.append(f"Constant learning rate: η = {lr}")
     notes.append("")
@@ -163,15 +165,15 @@ def _verify_constant(lr: float, T: int, notes: list[str]) -> RobbinsMonroVerific
     return RobbinsMonroVerification(
         condition_1_satisfied=True,
         condition_2_satisfied=False,
-        sum_lr_estimate=lr * T,
-        sum_lr_sq_estimate=lr * lr * T,
-        T_evaluated=T,
+        sum_lr_estimate=lr * n_steps,
+        sum_lr_sq_estimate=lr * lr * n_steps,
+        n_steps_evaluated=n_steps,
         analysis_notes=notes,
     )
 
 
 def _verify_polynomial(
-    params: dict[str, Any], T: int, notes: list[str]
+    params: dict[str, Any], n_steps: int, notes: list[str]
 ) -> RobbinsMonroVerification:
     """Polynomial decay η_t = η₀/t^α: satisfies RM iff 0.5 < α ≤ 1."""
     power = params["power"]
@@ -209,7 +211,7 @@ def _verify_polynomial(
         notes.append(f"Required: 0.5 < power ≤ 1. Current: power = {power}")
 
     # Compute actual sums for reference
-    ts = np.arange(1, T + 1)
+    ts = np.arange(1, n_steps + 1)
     lrs = initial_lr / (ts**power)
 
     return RobbinsMonroVerification(
@@ -217,13 +219,13 @@ def _verify_polynomial(
         condition_2_satisfied=cond2,
         sum_lr_estimate=float(np.sum(lrs)),
         sum_lr_sq_estimate=float(np.sum(lrs**2)),
-        T_evaluated=T,
+        n_steps_evaluated=n_steps,
         analysis_notes=notes,
     )
 
 
 def _verify_inverse_time(
-    params: dict[str, Any], T: int, notes: list[str]
+    params: dict[str, Any], n_steps: int, notes: list[str]
 ) -> RobbinsMonroVerification:
     """Inverse time decay η_t = η₀/(1 + decay·t): satisfies RM iff decay > 0."""
     decay = params["decay"]
@@ -260,7 +262,7 @@ def _verify_inverse_time(
             "CONCLUSION: With decay=0, this is a constant LR (RM not satisfied)."
         )
 
-    ts = np.arange(1, T + 1)
+    ts = np.arange(1, n_steps + 1)
     lrs = initial_lr / (1.0 + decay * ts)
 
     return RobbinsMonroVerification(
@@ -268,13 +270,13 @@ def _verify_inverse_time(
         condition_2_satisfied=cond2,
         sum_lr_estimate=float(np.sum(lrs)),
         sum_lr_sq_estimate=float(np.sum(lrs**2)),
-        T_evaluated=T,
+        n_steps_evaluated=n_steps,
         analysis_notes=notes,
     )
 
 
 def _verify_numerical_fallback(
-    schedule: LearningRateSchedule, T: int, notes: list[str]
+    schedule: LearningRateSchedule, n_steps: int, notes: list[str]
 ) -> RobbinsMonroVerification:
     """Numerical estimation for unknown schedule types."""
     notes.append("Unknown schedule type - using numerical estimation")
@@ -282,18 +284,18 @@ def _verify_numerical_fallback(
     notes.append("")
 
     # Evaluate schedule at many points
-    lrs = np.array([schedule(t) for t in range(1, T + 1)])
+    lrs = np.array([schedule(t) for t in range(1, n_steps + 1)])
     sum_lr = np.sum(lrs)
     sum_lr_sq = np.sum(lrs**2)
 
     # Check condition 1: sum should be large (approaching infinity)
-    sum_lr_half = np.sum(lrs[: T // 2])
+    sum_lr_half = np.sum(lrs[: n_steps // 2])
     growth_ratio = sum_lr / sum_lr_half if sum_lr_half > 0 else 0
 
     # For divergent series, doubling T should give more than 1.1x the sum
     condition_1 = bool(growth_ratio > 1.1)
 
-    notes.append(f"Evaluated over T = {T} steps")
+    notes.append(f"Evaluated over n_steps = {n_steps} steps")
     notes.append(f"Sum of learning rates: {sum_lr:.4f}")
     notes.append(f"Growth ratio (full/half): {growth_ratio:.4f}")
 
@@ -304,7 +306,7 @@ def _verify_numerical_fallback(
         notes.append("  Sum appears to converge or grow slowly.")
 
     # Check condition 2: sum of squares should converge (be bounded)
-    sum_lr_sq_half = np.sum(lrs[: T // 2] ** 2)
+    sum_lr_sq_half = np.sum(lrs[: n_steps // 2] ** 2)
     sq_growth_ratio = sum_lr_sq / sum_lr_sq_half if sum_lr_sq_half > 0 else 0
 
     # For convergent series, doubling T should give < 1.1x the sum
@@ -338,7 +340,7 @@ def _verify_numerical_fallback(
         condition_2_satisfied=condition_2,
         sum_lr_estimate=float(sum_lr),
         sum_lr_sq_estimate=float(sum_lr_sq),
-        T_evaluated=T,
+        n_steps_evaluated=n_steps,
         analysis_notes=notes,
     )
 
@@ -405,7 +407,7 @@ def estimate_lipschitz_constant(
 
 def analyze_convergence(
     raker: OnlineRakingSGD,
-    tolerance: float = 1e-6,
+    loss_tolerance: float = 1e-6,
 ) -> ConvergenceAnalysis:
     """Perform comprehensive convergence analysis.
 
@@ -414,7 +416,10 @@ def analyze_convergence(
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
-        tolerance: Target convergence tolerance.
+        loss_tolerance: Loss value at or below which the raker counts as
+            converged. This is a squared-error loss, not a margin distance --
+            see :func:`~onlinerake.diagnostics.check_target_feasibility` for the
+            latter, which lives on a completely different scale.
 
     Returns:
         ConvergenceAnalysis with detailed theoretical assessment.
@@ -468,7 +473,7 @@ def analyze_convergence(
         convergence_rate = "May not converge (LR too large)"
 
     # Estimate iterations to convergence
-    if raker._n_obs > 0 and raker.loss > tolerance:
+    if raker._n_obs > 0 and raker.loss > loss_tolerance:
         current_loss = raker.loss
         # Very rough estimate based on observed rate
         if len(raker._loss_history) >= 10:
@@ -477,7 +482,7 @@ def analyze_convergence(
                 rate = (recent_losses[0] / recent_losses[-1]) ** (1 / 10)
                 if rate > 1.01:
                     iterations_needed = int(
-                        np.log(tolerance / current_loss) / np.log(1 / rate)
+                        np.log(loss_tolerance / current_loss) / np.log(1 / rate)
                     )
                     expected_iterations = max(0, iterations_needed)
                 else:
@@ -487,7 +492,7 @@ def analyze_convergence(
         else:
             expected_iterations = None
     else:
-        expected_iterations = 0 if raker.loss <= tolerance else None
+        expected_iterations = 0 if raker.loss <= loss_tolerance else None
 
     # Additional warnings
     if raker._n_obs > 0:
@@ -511,8 +516,8 @@ def analyze_convergence(
 
 
 def theoretical_convergence_bound(
-    n_features: int,
     n_observations: int,
+    n_features: int,
     learning_rate_schedule: str = "polynomial",
     initial_lr: float = 5.0,
     power: float = 0.6,
@@ -528,8 +533,8 @@ def theoretical_convergence_bound(
     For α = 0.6, this gives O(1/T^0.4) convergence rate.
 
     Args:
-        n_features: Number of features being calibrated.
         n_observations: Number of observations (T).
+        n_features: Number of features being calibrated.
         learning_rate_schedule: "polynomial" or "constant".
         initial_lr: Initial learning rate η_0.
         power: Decay power α for polynomial schedule.
@@ -598,8 +603,8 @@ def theoretical_convergence_bound(
 
 
 def mwu_convergence_analysis(
-    n_features: int,
     n_observations: int,
+    n_features: int,
     learning_rate: float = 1.0,
 ) -> dict[str, Any]:
     """Analyze MWU algorithm convergence properties.
@@ -615,8 +620,8 @@ def mwu_convergence_analysis(
     which translates to O(√(log n / T)) convergence rate for average loss.
 
     Args:
-        n_features: Number of features.
         n_observations: Number of observations.
+        n_features: Number of features.
         learning_rate: MWU learning rate.
 
     Returns:
@@ -670,7 +675,7 @@ def verify_convergence_conditions(
 
     # 1. Check learning rate conditions
     if hasattr(raker, "_lr_schedule") and raker._lr_schedule is not None:
-        rm_check = verify_robbins_monro(raker._lr_schedule, T=10000)
+        rm_check = verify_robbins_monro(raker._lr_schedule, n_steps=10000)
         results["checks"]["robbins_monro"] = {
             "status": (
                 "PASS"

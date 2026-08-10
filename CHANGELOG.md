@@ -31,12 +31,37 @@ lives on the quantity that can carry it.
   boundary — and measured 0.470 anytime coverage at `OnlineRakingMWU`'s default.
 - **`summarize_raking_results()` no longer takes `confidence_level`.** Its
   margin section reports calibration, which has no confidence level.
+- **`tolerance`, on the two functions that meant different things by it.**
+  `analyze_convergence` now takes `loss_tolerance` (a squared-error loss,
+  default 1e-6) and `check_target_feasibility` takes `margin_tolerance` (a
+  distance in margin units, default 0.05). Four orders of magnitude apart under
+  one name, so a value carried from one to the other was nonsense.
+- **`verify_robbins_monro(T=...)` is now `n_steps`**, and
+  `RobbinsMonroVerification.T_evaluated` is `n_steps_evaluated`. It was the only
+  single-letter parameter in the package.
 - **`fit_one`**, on both rakers. It was a bare alias for `partial_fit`, labeled
   "backward compatibility" against a 1.x that this release already breaks in
   larger ways. Two names for one method is a question every reader has to answer
   before writing a line. Use `partial_fit` — it is what sklearn calls it.
 
 ### Changed
+- **`n_obs` is now `n_observations` everywhere, and the observation count comes
+  before the feature count everywhere.** `optimal_mwu_learning_rate` took
+  `(n_obs, n_features)` while `mwu_convergence_analysis` and
+  `theoretical_convergence_bound` took `(n_features, n_observations)` — the same
+  pair of counts in opposite orders. Both are ints, so a positional call with
+  them reversed raised nothing:
+  `optimal_mwu_learning_rate(1000, 4)` gives 0.2351 and the swap gives 5.0, a
+  21x different learning rate with no error and no way to notice.
+
+  `tests/test_api_consistency.py` now asserts the convention across every public
+  function — one name per concept, one order per pair, `raker` always first, and
+  identical `method`/`n_replicates` defaults across all six replication entry
+  points.
+- **`OnlineRakingMWU` accepts `max_history`.** It subclasses `OnlineRakingSGD`,
+  which has always accepted it, so the parent took a keyword the child raised
+  `TypeError` for. The consistency tests assert the subclass never narrows the
+  parent's surface again.
 - **Every function taking a replication `method` now defaults to `"auto"`**,
   which picks jackknife when the replicate size `n/G` is below 100 and random
   groups at or above it. Random groups scales the spread among `G` disjoint

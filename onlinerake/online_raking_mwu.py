@@ -58,6 +58,11 @@ class OnlineRakingMWU(OnlineRakingSGD):
         Controls computation of weight distribution statistics for performance.
         If True, compute on every call. If False, never compute.
         If integer k, compute every k observations. Default is False.
+    max_history : int, optional
+        Cap on retained per-observation history, as on
+        :class:`~onlinerake.online_raking_sgd.OnlineRakingSGD`. This subclass
+        used to omit it, so the parent accepted it and the child raised
+        ``TypeError`` for the same keyword.
     """
 
     def __init__(
@@ -71,6 +76,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
         track_convergence: bool = True,
         convergence_window: int = 20,
         compute_weight_stats: bool | int = False,
+        max_history: int = 1000,
         track_kl_divergence: bool = False,
     ) -> None:
         super().__init__(
@@ -83,6 +89,7 @@ class OnlineRakingMWU(OnlineRakingSGD):
             track_convergence=track_convergence,
             convergence_window=convergence_window,
             compute_weight_stats=compute_weight_stats,
+            max_history=max_history,
             track_kl_divergence=track_kl_divergence,
         )
 

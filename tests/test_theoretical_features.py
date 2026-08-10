@@ -40,7 +40,7 @@ class TestRobbinsMonroVerification:
 
     def test_constant_lr_fails_rm(self):
         """Constant learning rate should not satisfy Robbins-Monro."""
-        result = verify_robbins_monro(5.0, T=1000)
+        result = verify_robbins_monro(5.0, n_steps=1000)
 
         assert isinstance(result, RobbinsMonroVerification)
         assert result.condition_1_satisfied
@@ -49,7 +49,7 @@ class TestRobbinsMonroVerification:
     def test_polynomial_decay_satisfies_rm(self):
         """Polynomial decay with proper power should satisfy Robbins-Monro."""
         schedule = PolynomialDecayLR(initial_lr=5.0, power=0.6, min_lr=0.0)
-        result = verify_robbins_monro(schedule, T=10000)
+        result = verify_robbins_monro(schedule, n_steps=10000)
 
         assert result.condition_1_satisfied
         assert result.condition_2_satisfied
@@ -57,7 +57,7 @@ class TestRobbinsMonroVerification:
     def test_inverse_time_decay_satisfies_rm(self):
         """Inverse time decay should satisfy Robbins-Monro."""
         schedule = InverseTimeDecayLR(initial_lr=5.0, decay=0.01, min_lr=0.0)
-        result = verify_robbins_monro(schedule, T=10000)
+        result = verify_robbins_monro(schedule, n_steps=10000)
 
         assert result.condition_1_satisfied
         assert result.condition_2_satisfied
@@ -65,7 +65,7 @@ class TestRobbinsMonroVerification:
     def test_constant_lr_schedule_object(self):
         """ConstantLR schedule should fail Robbins-Monro."""
         schedule = ConstantLR(learning_rate=1.0)
-        result = verify_robbins_monro(schedule, T=1000)
+        result = verify_robbins_monro(schedule, n_steps=1000)
 
         assert not result.condition_2_satisfied
 
@@ -489,3 +489,34 @@ class TestMWUSpecificTheory:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestTheNumericalFallbackRuns:
+    """A custom schedule takes a path none of the analytic branches cover.
+
+    This existed untested, and the 2.0.0 rename of ``T`` to ``n_steps`` left a
+    stale reference inside it. Nothing failed: no test constructs a schedule
+    whose ``get_params()['type']`` is unrecognised, so the branch never
+    executed. ruff caught the undefined name; this stops the next one being
+    caught by a user.
+    """
+
+    def test_an_unknown_schedule_type_is_verified_numerically(self):
+        from onlinerake.learning_rate import LearningRateSchedule
+
+        class CustomSchedule(LearningRateSchedule):
+            """Polynomial decay the dispatcher has no analytic branch for."""
+
+            def __call__(self, t: int) -> float:
+                return 1.0 / (t**0.7)
+
+            def get_params(self) -> dict:
+                return {"type": "something_the_dispatcher_has_never_seen"}
+
+        result = verify_robbins_monro(CustomSchedule(), n_steps=500)
+
+        # 0.5 < 0.7 <= 1, so both conditions should hold.
+        assert result.condition_1_satisfied
+        assert result.condition_2_satisfied
+        assert result.n_steps_evaluated == 500
+        assert any("Evaluated over" in note for note in result.analysis_notes)

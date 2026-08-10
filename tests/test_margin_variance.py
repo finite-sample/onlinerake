@@ -209,15 +209,15 @@ class TestAutoPicksAScheme:
 
     def test_it_picks_jackknife_when_replicates_are_small(self):
         """Below the threshold, random groups understates; see the resolver."""
-        assert resolve_replication_method("auto", n_obs=300, n_replicates=10) == (
-            "jackknife"
-        )
+        assert resolve_replication_method(
+            "auto", n_observations=300, n_replicates=10
+        ) == ("jackknife")
 
     def test_it_picks_random_groups_when_replicates_are_large(self):
         """Above it the understatement has decayed and the cheap scheme wins."""
-        assert resolve_replication_method("auto", n_obs=4800, n_replicates=10) == (
-            "random_groups"
-        )
+        assert resolve_replication_method(
+            "auto", n_observations=4800, n_replicates=10
+        ) == ("random_groups")
 
     def test_it_switches_at_the_documented_threshold(self):
         """The negative case for the two tests above.

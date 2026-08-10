@@ -33,7 +33,7 @@ WEIGHT_LOWER_THRESHOLD_RATIO = 1.05
 MIN_FEASIBILITY_SCORE = 0.5
 PROGRESS_SCORE_BONUS = 0.5
 EXTREME_WEIGHT_RATIO = 1000
-MAX_WEIGHT_RATIO_COMPROMISE = 100
+MAX_WEIGHT_RATIO_COMPROMISE = 100.0
 Z_SCORES: dict[float, float] = {0.90: 1.645, 0.95: 1.960, 0.99: 2.576}
 
 #: Replication schemes accepted by :func:`estimate_margin_variance`. ``"auto"``
@@ -128,7 +128,9 @@ class FeasibilityReport:
     recommendations: list[str]
 
 
-def resolve_replication_method(method: str, n_obs: int, n_replicates: int) -> str:
+def resolve_replication_method(
+    method: str, n_observations: int, n_replicates: int
+) -> str:
     """Turn ``"auto"`` into the scheme it actually runs.
 
     Call this to see what a default-argument call is about to do. Every public
@@ -171,7 +173,7 @@ def resolve_replication_method(method: str, n_obs: int, n_replicates: int) -> st
 
     Args:
         method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
-        n_obs: Number of observations the raker has seen.
+        n_observations: Number of observations the raker has seen.
         n_replicates: Number of replicate groups requested.
 
     Returns:
@@ -183,9 +185,9 @@ def resolve_replication_method(method: str, n_obs: int, n_replicates: int) -> st
             below 2.
 
     Examples:
-        >>> resolve_replication_method("auto", n_obs=300, n_replicates=10)
+        >>> resolve_replication_method("auto", n_observations=300, n_replicates=10)
         'jackknife'
-        >>> resolve_replication_method("auto", n_obs=4800, n_replicates=10)
+        >>> resolve_replication_method("auto", n_observations=4800, n_replicates=10)
         'random_groups'
         >>> resolve_replication_method("random_groups", 300, 10)
         'random_groups'
@@ -193,8 +195,12 @@ def resolve_replication_method(method: str, n_obs: int, n_replicates: int) -> st
     _check_replication(method, n_replicates)
     if method != "auto":
         return method
-    groups = max(2, min(int(n_replicates), max(n_obs, 1)))
-    return "random_groups" if n_obs / groups >= AUTO_REPLICATE_SIZE else "jackknife"
+    groups = max(2, min(int(n_replicates), max(n_observations, 1)))
+    return (
+        "random_groups"
+        if n_observations / groups >= AUTO_REPLICATE_SIZE
+        else "jackknife"
+    )
 
 
 def _check_replication(method: str, n_replicates: int) -> None:
@@ -629,7 +635,7 @@ def margin_calibration(
 
 def check_target_feasibility(
     raker: OnlineRakingSGD,
-    tolerance: float = 0.05,
+    margin_tolerance: float = 0.05,
 ) -> FeasibilityReport:
     """Check whether target margins are feasible given the observed data.
 
@@ -643,7 +649,10 @@ def check_target_feasibility(
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
-        tolerance: Tolerance for feasibility checks.
+        margin_tolerance: How far a margin may sit from its target and still
+            count as reachable, in margin units. Not comparable to
+            :func:`~onlinerake.convergence.analyze_convergence`'s
+            ``loss_tolerance``, which is a squared-error loss.
 
     Returns:
         FeasibilityReport with diagnosis and recommendations.
@@ -673,7 +682,7 @@ def check_target_feasibility(
             # Check if sample has required variation
             if raw == 0:
                 # No observations with feature=1, can't increase margin
-                if target > tolerance:
+                if target > margin_tolerance:
                     problematic.append(feature)
                     scores[feature] = 0.0
                     recommendations.append(
@@ -684,7 +693,7 @@ def check_target_feasibility(
 
             if raw == 1:
                 # All observations have feature=1, can't decrease margin
-                if target < 1 - tolerance:
+                if target < 1 - margin_tolerance:
                     problematic.append(feature)
                     scores[feature] = 0.0
                     recommendations.append(
@@ -715,7 +724,7 @@ def check_target_feasibility(
 
         # Scale tolerance for continuous features based on target magnitude
         effective_tolerance = (
-            tolerance if is_binary else tolerance * max(1.0, abs(target))
+            margin_tolerance if is_binary else margin_tolerance * max(1.0, abs(target))
         )
 
         if raw_error > effective_tolerance:
@@ -1121,7 +1130,7 @@ def _compute_achievable_with_ratio(
 
 def suggest_feasible_targets(
     raker: OnlineRakingSGD,
-    max_weight_ratio: float = 100.0,
+    max_weight_ratio: float = MAX_WEIGHT_RATIO_COMPROMISE,
 ) -> dict[str, float]:
     """Suggest feasible targets based on observed data and weight constraints.
 
@@ -1326,34 +1335,34 @@ def compare_to_ipf(
     )
 
 
-def optimal_mwu_learning_rate(n_obs: int, n_features: int) -> float:
+def optimal_mwu_learning_rate(n_observations: int, n_features: int) -> float:
     """Compute theoretical optimal learning rate for MWU to approximate IPF.
 
     From mirror descent theory, the optimal learning rate is approximately:
-        η* ≈ sqrt(2 * log(n_obs) / T)
+        η* ≈ sqrt(2 * log(n_observations) / T)
 
     where T is the expected number of iterations. For streaming raking with
-    n_sgd_steps per observation, T ≈ n_obs * n_sgd_steps.
+    n_sgd_steps per observation, T ≈ n_observations * n_sgd_steps.
 
     A smaller learning rate means MWU stays closer to IPF at each step,
     but convergence is slower. This function provides a reasonable starting
     point for tuning.
 
     Args:
-        n_obs: Expected number of observations.
+        n_observations: Expected number of observations.
         n_features: Number of features being calibrated.
 
     Returns:
         Recommended learning rate for MWU.
 
     Examples:
-        >>> print(f"{optimal_mwu_learning_rate(n_obs=1000, n_features=4):.3f}")
+        >>> print(f"{optimal_mwu_learning_rate(n_observations=1000, n_features=4):.3f}")
         0.235
 
         The bound goes as ``1/sqrt(T)``, so a longer stream warrants a smaller
         step -- ten times the observations, roughly a third the rate:
 
-        >>> print(f"{optimal_mwu_learning_rate(n_obs=10000, n_features=4):.3f}")
+        >>> print(f"{optimal_mwu_learning_rate(n_observations=10000, n_features=4):.3f}")
         0.086
 
     Note:
@@ -1362,17 +1371,17 @@ def optimal_mwu_learning_rate(n_obs: int, n_features: int) -> float:
         - For faster convergence: use lr 1.0-5.0
         - Monitor loss and adjust as needed
     """
-    if n_obs <= 1:
+    if n_observations <= 1:
         return 1.0
 
     # From mirror descent regret bounds:
     # η* = sqrt(2 * D / (T * G^2))
-    # where D is diameter of domain (log(n_obs) for simplex)
+    # where D is diameter of domain (log(n_observations) for simplex)
     # and G is gradient bound (depends on n_features)
 
     # Simplified heuristic that works well empirically
-    log_n = np.log(n_obs)
-    eta = np.sqrt(2 * log_n / n_obs)
+    log_n = np.log(n_observations)
+    eta = np.sqrt(2 * log_n / n_observations)
 
     # Scale by features (more features = more complex optimization)
     eta *= np.sqrt(n_features)

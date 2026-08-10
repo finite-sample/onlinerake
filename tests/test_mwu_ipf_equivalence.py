@@ -391,19 +391,19 @@ class TestOptimalLearningRate:
 
     def test_optimal_lr_reasonable_range(self):
         """Optimal LR should be in reasonable range."""
-        lr = optimal_mwu_learning_rate(n_obs=100, n_features=4)
+        lr = optimal_mwu_learning_rate(n_observations=100, n_features=4)
         assert 0.01 <= lr <= 5.0
 
     def test_optimal_lr_decreases_with_n(self):
         """Optimal LR should decrease with more observations."""
-        lr_100 = optimal_mwu_learning_rate(n_obs=100, n_features=4)
-        lr_10000 = optimal_mwu_learning_rate(n_obs=10000, n_features=4)
+        lr_100 = optimal_mwu_learning_rate(n_observations=100, n_features=4)
+        lr_10000 = optimal_mwu_learning_rate(n_observations=10000, n_features=4)
         assert lr_10000 < lr_100
 
     def test_optimal_lr_increases_with_features(self):
         """Optimal LR scales with number of features."""
-        lr_2 = optimal_mwu_learning_rate(n_obs=1000, n_features=2)
-        lr_8 = optimal_mwu_learning_rate(n_obs=1000, n_features=8)
+        lr_2 = optimal_mwu_learning_rate(n_observations=1000, n_features=2)
+        lr_8 = optimal_mwu_learning_rate(n_observations=1000, n_features=8)
         assert lr_8 > lr_2
 
 
