@@ -31,9 +31,9 @@ from onlinerake import OnlineRakingSGD, Targets
 
 # Define population targets (proportion with indicator = 1)
 targets = Targets(
-    female=0.51,      # 51% female in population
-    college=0.32,     # 32% college educated
-    age_65_plus=0.17  # 17% age 65+
+    female=0.51,  # 51% female in population
+    college=0.32,  # 32% college educated
+    age_65_plus=0.17,  # 17% age 65+
 )
 
 # Create raker
@@ -48,7 +48,7 @@ for response in survey_stream:
     print(f"Effective sample size: {raker.effective_sample_size:.0f}")
 
 # Get final weights
-weights = raker.weights[:raker.n_obs]
+weights = raker.weights[: raker.n_obs]
 ```
 
 ## Which Algorithm?
@@ -82,9 +82,9 @@ Target means instead of proportions:
 
 ```python
 targets = Targets(
-    age=(42.0, "mean"),      # Target mean age = 42
+    age=(42.0, "mean"),  # Target mean age = 42
     income=(55000, "mean"),  # Target mean income = $55,000
-    female=0.51              # Binary: 51% female
+    female=0.51,  # Binary: 51% female
 )
 ```
 
