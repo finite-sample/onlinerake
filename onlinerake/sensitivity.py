@@ -70,11 +70,10 @@ def run_sensitivity_analysis(
     observations: list[dict[str, Any]],
     targets: Targets,
     learning_rates: list[float] | None = None,
-    n_steps_values: list[int] | None = None,
+    n_sgd_steps_values: list[int] | None = None,
     min_weights: list[float] | None = None,
     max_weights: list[float] | None = None,
     algorithm: str = "sgd",
-    seeds: list[int] | None = None,
 ) -> SensitivityReport:
     """Run systematic sensitivity analysis over hyperparameter grid.
 
@@ -86,22 +85,46 @@ def run_sensitivity_analysis(
         observations: List of observations to process.
         targets: Target proportions (Targets object).
         learning_rates: Learning rates to test. Default: [0.5, 1.0, 2.0, 5.0, 10.0]
-        n_steps_values: SGD steps per observation to test. Default: [1, 3, 5]
+        n_sgd_steps_values: Gradient updates per observation to test, matching
+            the raker's ``n_sgd_steps``. Default: [1, 3, 5]
         min_weights: Minimum weight bounds to test. Default: [1e-4, 1e-3, 1e-2]
         max_weights: Maximum weight bounds to test. Default: [10, 100, 1000]
         algorithm: "sgd" or "mwu". Default: "sgd"
-        seeds: Random seeds for multiple runs. Default: [42]
 
     Returns:
         SensitivityReport with all results and recommendations.
 
     Examples:
+        The defaults sweep 5 x 3 x 3 x 3 = 135 configurations, so pass narrower
+        lists when you only want to vary one axis:
+
         >>> from onlinerake import Targets
-        >>> targets = Targets(age=0.4, gender=0.5)
-        >>> observations = [{'age': 1, 'gender': 0}, ...]
-        >>> report = run_sensitivity_analysis(observations, targets)
-        >>> print(report.best_params)
-        >>> print(report.recommendations)
+        >>> targets = Targets(female=0.5, college=0.3)
+        >>> observations = [
+        ...     {"female": i % 2, "college": (i % 3) == 0} for i in range(40)
+        ... ]
+        >>> report = run_sensitivity_analysis(
+        ...     observations,
+        ...     targets,
+        ...     learning_rates=[1.0, 5.0],
+        ...     n_sgd_steps_values=[1],
+        ...     min_weights=[1e-4],
+        ...     max_weights=[10],
+        ... )
+        >>> len(report.results)
+        2
+        >>> report.best_params["learning_rate"]
+        5.0
+
+        The keys are the raker's own argument names, so the winner goes
+        straight back in:
+
+        >>> sorted(report.best_params)
+        ['learning_rate', 'max_weight', 'min_weight', 'n_sgd_steps']
+        >>> from onlinerake import OnlineRakingSGD
+        >>> raker = OnlineRakingSGD(targets, **report.best_params)
+        >>> raker.n_sgd_steps
+        1
     """
     from .online_raking_mwu import OnlineRakingMWU
     from .online_raking_sgd import OnlineRakingSGD
@@ -109,79 +132,66 @@ def run_sensitivity_analysis(
     # Default parameter grids
     if learning_rates is None:
         learning_rates = [0.5, 1.0, 2.0, 5.0, 10.0]
-    if n_steps_values is None:
-        n_steps_values = [1, 3, 5]
+    if n_sgd_steps_values is None:
+        n_sgd_steps_values = [1, 3, 5]
     if min_weights is None:
         min_weights = [1e-4, 1e-3, 1e-2]
     if max_weights is None:
         max_weights = [10.0, 100.0, 1000.0]
-    if seeds is None:
-        seeds = [42]
 
     results: list[SensitivityResult] = []
 
     # Grid search
     for lr in learning_rates:
-        for n_steps in n_steps_values:
+        for n_sgd_steps in n_sgd_steps_values:
             for min_w in min_weights:
                 for max_w in max_weights:
                     if max_w <= min_w:
                         continue
 
-                    for seed in seeds:
-                        # Set seed for reproducibility
-                        np.random.seed(seed)
-
-                        # Create raker
-                        raker: OnlineRakingSGD | OnlineRakingMWU
-                        if algorithm.lower() == "mwu":
-                            raker = OnlineRakingMWU(
-                                targets,
-                                learning_rate=lr,
-                                n_sgd_steps=n_steps,
-                                min_weight=min_w,
-                                max_weight=max_w,
-                            )
-                        else:
-                            raker = OnlineRakingSGD(
-                                targets,
-                                learning_rate=lr,
-                                n_sgd_steps=n_steps,
-                                min_weight=min_w,
-                                max_weight=max_w,
-                            )
-
-                        # Process observations
-                        for obs in observations:
-                            raker.partial_fit(obs)
-
-                        # Collect results
-                        margins = raker.margins
-                        margin_errors = {
-                            name: abs(margins[name] - targets[name])
-                            for name in raker._feature_names
-                        }
-
-                        result = SensitivityResult(
-                            params={
-                                "learning_rate": lr,
-                                "n_steps": n_steps,
-                                "min_weight": min_w,
-                                "max_weight": max_w,
-                                "seed": seed,
-                            },
-                            final_loss=raker.loss,
-                            final_ess=raker.effective_sample_size,
-                            convergence_step=raker.convergence_step,
-                            margin_errors=margin_errors,
-                            mean_margin_error=float(
-                                np.mean(list(margin_errors.values()))
-                            ),
-                            weight_efficiency=raker.effective_sample_size
-                            / raker._n_obs,
-                            oscillation_detected=raker.detect_oscillation(),
+                    raker: OnlineRakingSGD | OnlineRakingMWU
+                    if algorithm.lower() == "mwu":
+                        raker = OnlineRakingMWU(
+                            targets,
+                            learning_rate=lr,
+                            n_sgd_steps=n_sgd_steps,
+                            min_weight=min_w,
+                            max_weight=max_w,
                         )
-                        results.append(result)
+                    else:
+                        raker = OnlineRakingSGD(
+                            targets,
+                            learning_rate=lr,
+                            n_sgd_steps=n_sgd_steps,
+                            min_weight=min_w,
+                            max_weight=max_w,
+                        )
+
+                    for obs in observations:
+                        raker.partial_fit(obs)
+
+                    margins = raker.margins
+                    margin_errors = {
+                        name: abs(margins[name] - targets[name])
+                        for name in raker._feature_names
+                    }
+
+                    result = SensitivityResult(
+                        params={
+                            "learning_rate": lr,
+                            "n_sgd_steps": n_sgd_steps,
+                            "min_weight": min_w,
+                            "max_weight": max_w,
+                        },
+                        final_loss=raker.loss,
+                        final_ess=raker.effective_sample_size,
+                        convergence_step=raker.convergence_step,
+                        margin_errors=margin_errors,
+                        mean_margin_error=float(np.mean(list(margin_errors.values()))),
+                        weight_efficiency=raker.effective_sample_size / raker._n_obs,
+                        oscillation_detected=raker.detect_oscillation(),
+                    )
+                    results.append(result)
 
     # Find best parameters
     if not results:
@@ -221,7 +231,7 @@ def _estimate_param_importance(results: list[SensitivityResult]) -> dict[str, fl
     if total_var == 0:
         return {
             "learning_rate": 0.0,
-            "n_steps": 0.0,
+            "n_sgd_steps": 0.0,
             "min_weight": 0.0,
             "max_weight": 0.0,
         }
@@ -229,7 +239,7 @@ def _estimate_param_importance(results: list[SensitivityResult]) -> dict[str, fl
     importance = {}
 
     # For each parameter, compute variance explained
-    for param in ["learning_rate", "n_steps", "min_weight", "max_weight"]:
+    for param in ["learning_rate", "n_sgd_steps", "min_weight", "max_weight"]:
         # Group results by parameter value
         param_groups: dict[Any, list[float]] = {}
         for r in results:
@@ -266,8 +276,8 @@ def _generate_recommendations(
         f"(importance: {param_importance.get('learning_rate', 0):.1%})"
     )
     recommendations.append(
-        f"Best n_steps: {best_params['n_steps']} "
-        f"(importance: {param_importance.get('n_steps', 0):.1%})"
+        f"Best n_sgd_steps: {best_params['n_sgd_steps']} "
+        f"(importance: {param_importance.get('n_sgd_steps', 0):.1%})"
     )
 
     # Check for oscillation at high learning rates
@@ -322,11 +332,11 @@ def quick_sensitivity_check(
         Dictionary with sensitivity metrics.
     """
     base_lr = raker.learning_rate
-    base_n_steps = raker.n_sgd_steps
+    base_n_sgd_steps = raker.n_sgd_steps
 
     # Create variations
     lr_range = [base_lr * f for f in [0.5, 0.75, 1.0, 1.25, 1.5]][:n_variations]
-    n_steps_range = list(range(max(1, base_n_steps - 2), base_n_steps + 3))[
+    n_sgd_steps_range = list(range(max(1, base_n_sgd_steps - 2), base_n_sgd_steps + 3))[
         :n_variations
     ]
 
@@ -335,17 +345,17 @@ def quick_sensitivity_check(
         observations,
         raker.targets,
         learning_rates=lr_range,
-        n_steps_values=n_steps_range,
+        n_sgd_steps_values=n_sgd_steps_range,
         min_weights=[raker.min_weight],
         max_weights=[raker.max_weight],
     )
 
     return {
         "baseline_lr": base_lr,
-        "baseline_n_steps": base_n_steps,
+        "baseline_n_sgd_steps": base_n_sgd_steps,
         "best_lr": report.best_params["learning_rate"],
-        "best_n_steps": report.best_params["n_steps"],
+        "best_n_sgd_steps": report.best_params["n_sgd_steps"],
         "lr_sensitivity": report.param_importance.get("learning_rate", 0),
-        "n_steps_sensitivity": report.param_importance.get("n_steps", 0),
+        "n_sgd_steps_sensitivity": report.param_importance.get("n_sgd_steps", 0),
         "recommendations": report.recommendations,
     }

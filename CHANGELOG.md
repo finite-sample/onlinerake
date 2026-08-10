@@ -68,13 +68,50 @@ lives on the quantity that can carry it.
   estimator in the package and had no variance estimator at all. Signatures
   mirror the margin functions. The interval is conditional on the outcome model,
   which is fixed across replicates by design.
-- **Replication variance** underneath both: `method="random_groups"` (default)
-  calibrates `n_replicates` disjoint groups and costs less than the original
-  fit; `method="jackknife"` is delete-a-group and costs `n_replicates` full
-  refits. Each replicate re-runs the whole calibration, which is `survey`'s own
-  position — it refuses to calibrate a design after replicate weights exist.
+- **Replication variance** underneath both: `method="random_groups"` calibrates
+  `n_replicates` disjoint groups and costs less than the original fit;
+  `method="jackknife"` is delete-a-group and costs `n_replicates` full refits.
+  `method="auto"` is the default and picks between them. Each replicate re-runs
+  the whole calibration, which is `survey`'s own position — it refuses to
+  calibrate a design after replicate weights exist.
+- **CI now runs the docstring examples** (`pytest --doctest-modules onlinerake/`).
 
 ### Fixed
+- **22 of the package's docstring examples did not run.** Nothing had ever
+  executed them — there was no `--doctest-modules` in the config, in CI, or in
+  the test suite. They failed on undefined names (`stream`, `raker`, `data`,
+  `X_train`), on `>>> print(...)` lines with no expected output, on
+  `from sklearn.linear_model import LogisticRegression` in a package that does
+  not depend on scikit-learn, and — in `Targets` — on an example that raised
+  `KeyError('owns_car')` because an earlier line had rebound the variable. All
+  41 now run in CI.
+
+  Rewriting them turned up claims worth pinning rather than merely restoring:
+  `partial_fit_batch` is asserted to give weights bit-identical to feeding the
+  same observations one at a time, `weights` is asserted to return a copy,
+  `OutcomeModel` is checked against a class that does *not* satisfy it, and
+  `BatchIPF` is shown landing exactly on its targets where the streaming raker
+  only approaches them.
+- **`run_sensitivity_analysis(seeds=...)` did nothing but multiply the grid and
+  stomp the caller's global RNG.** It called `np.random.seed(seed)` on every
+  cell, but nothing in the raking is random — running the same grid under
+  `seeds=[42]` and `seeds=[7]` gives results that differ only in the recorded
+  seed value. The parameter is removed and the `np.random.seed` call with it; a
+  library should not reseed the global NumPy generator as a side effect.
+- **The sensitivity sweep named its parameter `n_steps`, the rakers call it
+  `n_sgd_steps`.** `best_params` could not be handed back to a raker without
+  translation. Renamed throughout — `n_steps_values` is now `n_sgd_steps_values`
+  and the report keys match the raker's arguments, so
+  `OnlineRakingSGD(targets, **report.best_params)` works. That construction is
+  now asserted in both a test and a doctest.
+- **The package docstring's performance claims were false.** It advertised
+  "Performance independent of number of observations" and "3000-6000
+  observations per second". `partial_fit` rewrites all `n` accumulated weights
+  and the gradient is itself O(n), so per-observation cost is
+  Θ(n · `n_sgd_steps`) and a pass is quadratic in the stream length — measured
+  104 µs/obs at n=2,500 rising to 645 µs/obs at n=40,000, fitted exponent 1.66
+  on total time. The throughput figure was real only at an unstated small `n`.
+  Replaced with the complexity, the measurements, and the `n` each was taken at.
 - **`_z_score()` returned the 95% multiplier for any level outside a
   three-entry table.** It fell through to a `scipy` import, and scipy is not a
   dependency of this package, so `except ImportError` returned `Z_SCORES[0.95]`.

@@ -112,25 +112,33 @@ class ModelAssistedRaker(OnlineRakingSGD):
         prediction_targets: Dict of prediction targets.
 
     Examples:
-        >>> from sklearn.linear_model import LogisticRegression
+        Two stages. The model is fitted in batch and then held fixed while the
+        calibration streams -- that is the design, and it is why
+        :func:`model_assisted_variance` is conditional on the model.
+
+        >>> import numpy as np
         >>> from onlinerake import Targets
-        >>> from onlinerake.model_assisted import ModelAssistedRaker, ModelAssistedTargets
-        >>> from onlinerake.models import ExternalModelWrapper
-        >>>
-        >>> # Stage 1: Fit model (batch)
-        >>> clf = LogisticRegression().fit(X_train, y_train)
-        >>> model = ExternalModelWrapper(clf, use_proba=True)
-        >>>
-        >>> # Stage 2: Stream with calibration
+        >>> from onlinerake.models import LogisticOutcomeModel
+        >>> X = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]] * 10)
+        >>> y = np.array([1, 1, 0, 0] * 10)
+        >>> model = LogisticOutcomeModel().fit(X, y)
+
+        Any object with a ``predict`` method serves; wrap a foreign model in
+        :class:`~onlinerake.models.ExternalModelWrapper` when its API differs.
+
         >>> targets = ModelAssistedTargets(
         ...     demographic_targets=Targets(female=0.51, college=0.32),
         ...     prediction_targets={"pred": 0.48},
         ... )
         >>> raker = ModelAssistedRaker(targets, model)
-        >>>
-        >>> for obs in poll_stream:
-        ...     raker.partial_fit(obs, outcome=obs.get("vote"))
-        ...     print(f"GREG estimate: {raker.model_assisted_estimate:.3f}")
+        >>> stream = [
+        ...     {"female": i % 2, "college": (i % 3) == 0, "vote": i % 2}
+        ...     for i in range(40)
+        ... ]
+        >>> for obs in stream:
+        ...     raker.partial_fit(obs, outcome=obs["vote"])
+        >>> round(raker.model_assisted_estimate, 3)
+        0.582
     """
 
     def __init__(
@@ -554,23 +562,39 @@ class StreamingMRP:
         cell_rakers: Dict mapping cell_id to OnlineRakingSGD for that cell.
 
     Examples:
-        >>> from onlinerake.model_assisted import StreamingMRP, PoststratificationCells
+        Each cell carries its known share of the population and its own target,
+        and the shares are what the cell estimates are recombined by:
+
+        >>> import numpy as np
         >>> from onlinerake.models import LogisticOutcomeModel
-        >>>
-        >>> # Define cells
-        >>> cells = PoststratificationCells([
-        ...     PoststratificationCell("young_f", {"age": "young", "female": 1}, 0.15, 0.45),
-        ...     PoststratificationCell("young_m", {"age": "young", "female": 0}, 0.14, 0.52),
-        ...     PoststratificationCell("old_f", {"age": "old", "female": 1}, 0.36, 0.48),
-        ...     PoststratificationCell("old_m", {"age": "old", "female": 0}, 0.35, 0.55),
-        ... ])
-        >>>
-        >>> # Create MRP estimator
+        >>> X = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]] * 10)
+        >>> y = np.array([1, 1, 0, 0] * 10)
+        >>> model = LogisticOutcomeModel().fit(X, y)
+        >>> cells = PoststratificationCells(
+        ...     [
+        ...         PoststratificationCell(
+        ...             "young_f", {"age": "young", "female": 1}, 0.15, 0.45
+        ...         ),
+        ...         PoststratificationCell(
+        ...             "young_m", {"age": "young", "female": 0}, 0.14, 0.52
+        ...         ),
+        ...         PoststratificationCell(
+        ...             "old_f", {"age": "old", "female": 1}, 0.36, 0.48
+        ...         ),
+        ...         PoststratificationCell(
+        ...             "old_m", {"age": "old", "female": 0}, 0.35, 0.55
+        ...         ),
+        ...     ]
+        ... )
         >>> mrp = StreamingMRP(model=model, cells=cells)
-        >>>
-        >>> for obs in poll_stream:
-        ...     mrp.partial_fit(obs, outcome=obs.get("vote"))
-        ...     print(f"Population estimate: {mrp.population_estimate:.3f}")
+        >>> stream = [
+        ...     {"age": "young" if i % 2 else "old", "female": i % 2, "vote": i % 2}
+        ...     for i in range(40)
+        ... ]
+        >>> for obs in stream:
+        ...     mrp.partial_fit(obs, outcome=obs["vote"])
+        >>> round(mrp.population_estimate, 3)
+        0.396
     """
 
     def __init__(

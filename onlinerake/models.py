@@ -28,10 +28,23 @@ class OutcomeModel(Protocol):
     scikit-learn estimators, statsmodels fitted models, or custom implementations.
 
     Examples:
-        >>> from sklearn.linear_model import LogisticRegression
-        >>> clf = LogisticRegression().fit(X_train, y_train)
-        >>> isinstance(clf, OutcomeModel)  # True via duck typing
+        The protocol is ``runtime_checkable``, so ``predict`` is the whole
+        requirement -- no inheritance and no dependency on any modeling library:
+
+        >>> class ConstantModel:
+        ...     def predict(self, X):
+        ...         return np.zeros(len(np.atleast_2d(X)))
+        >>> isinstance(ConstantModel(), OutcomeModel)
         True
+
+        And a class without it is rejected, which is what makes the check above
+        mean something:
+
+        >>> class NotAModel:
+        ...     def score(self, X):
+        ...         return 0.0
+        >>> isinstance(NotAModel(), OutcomeModel)
+        False
     """
 
     def predict(self, X: npt.ArrayLike) -> npt.NDArray[np.floating[Any]]:
@@ -62,9 +75,19 @@ class LinearOutcomeModel:
         is_fitted: Whether the model has been fitted.
 
     Examples:
-        >>> model = LinearOutcomeModel()
-        >>> model.fit(X_train, y_train)
-        >>> predictions = model.predict(X_test)
+        On a noiseless design OLS recovers the generating coefficients exactly,
+        which is the cheapest way to see the fit is doing what it claims. Here
+        ``y = 1 + 2*x1 + 4*x2``:
+
+        >>> X = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+        >>> y = np.array([1.0, 3.0, 5.0, 7.0])
+        >>> model = LinearOutcomeModel().fit(X, y)
+        >>> model.coef_.round(6)
+        array([2., 4.])
+        >>> round(model.intercept_, 6)
+        1.0
+        >>> model.predict(np.array([[1.0, 1.0]]))
+        array([7.])
     """
 
     def __init__(self, fit_intercept: bool = True) -> None:
@@ -149,9 +172,15 @@ class LogisticOutcomeModel:
         is_fitted: Whether the model has been fitted.
 
     Examples:
-        >>> model = LogisticOutcomeModel()
-        >>> model.fit(X_train, y_train)
-        >>> probabilities = model.predict(X_test)
+        ``predict`` returns probabilities, not labels -- that is what
+        model-assisted calibration needs. Here the second column separates the
+        classes perfectly, so the fitted probabilities order with it:
+
+        >>> X = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+        >>> y = np.array([0, 0, 1, 1])
+        >>> model = LogisticOutcomeModel().fit(X, y)
+        >>> model.predict(X).round(3)
+        array([0.075, 0.05 , 0.967, 0.95 ])
     """
 
     def __init__(
@@ -273,10 +302,35 @@ class ExternalModelWrapper:
         model: The wrapped model.
 
     Examples:
-        >>> from sklearn.linear_model import LogisticRegression
-        >>> clf = LogisticRegression().fit(X_train, y_train)
-        >>> wrapper = ExternalModelWrapper(clf, use_proba=True)
-        >>> predictions = wrapper.predict(X_test)
+        Any object with the sklearn method names will do -- here a stand-in
+        classifier, so the example needs no modeling library to run:
+
+        >>> class Classifier:
+        ...     def predict(self, X):
+        ...         return np.array([0, 1])
+        ...     def predict_proba(self, X):
+        ...         return np.array([[0.7, 0.3], [0.1, 0.9]])
+        >>> X = np.array([[0.0], [1.0]])
+
+        ``use_proba`` is the whole point of the wrapper: hard labels are the
+        wrong input to a model-assisted estimate, and this is what switches
+        them for the probability of class 1.
+
+        >>> ExternalModelWrapper(Classifier()).predict(X)
+        array([0., 1.])
+        >>> ExternalModelWrapper(Classifier(), use_proba=True).predict(X)
+        array([0.3, 0.9])
+
+        Asking for probabilities from a model that cannot give them is refused
+        at construction rather than at predict time:
+
+        >>> class LabelsOnly:
+        ...     def predict(self, X):
+        ...         return np.zeros(len(X))
+        >>> ExternalModelWrapper(LabelsOnly(), use_proba=True)
+        Traceback (most recent call last):
+            ...
+        ValueError: use_proba=True requires model with predict_proba() method
     """
 
     def __init__(

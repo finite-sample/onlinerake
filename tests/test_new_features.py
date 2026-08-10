@@ -347,15 +347,21 @@ class TestSensitivityAnalysis:
             observations,
             targets,
             learning_rates=[1.0, 5.0],
-            n_steps_values=[1, 3],
+            n_sgd_steps_values=[1, 3],
             min_weights=[1e-3],
             max_weights=[100.0],
-            seeds=[42],
         )
 
-        assert len(report.results) > 0
-        assert "learning_rate" in report.best_params
-        assert "n_steps" in report.best_params
+        assert len(report.results) == 4
+        # The keys are the raker's own argument names, so the winning
+        # configuration can be handed straight back without translation.
+        assert set(report.best_params) == {
+            "learning_rate",
+            "n_sgd_steps",
+            "min_weight",
+            "max_weight",
+        }
+        OnlineRakingSGD(targets, **report.best_params)
 
     def test_quick_sensitivity_check(self):
         """Test quick sensitivity check."""

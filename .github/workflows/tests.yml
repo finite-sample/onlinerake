@@ -47,6 +47,13 @@ jobs:
     - name: Run pydoclint docstring checking
       run: uv run pydoclint onlinerake/
 
+    # Nothing ran the docstring examples until now, and 22 of them were broken:
+    # undefined names, missing expected output, sklearn imports the package does
+    # not depend on, and a Targets example that raised KeyError. An example a
+    # user copies has to be an example that runs.
+    - name: Run docstring examples
+      run: uv run pytest --doctest-modules onlinerake/ -v
+
     # Every test file except the Monte Carlo studies, which get their own step.
     # Naming files explicitly is how test_new_features.py,
     # test_theoretical_features.py, test_model_assisted.py and

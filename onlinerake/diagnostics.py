@@ -896,11 +896,23 @@ def analyze_infeasibility(
         InfeasibilityAnalysis with diagnosis and compromise solutions.
 
     Examples:
+        No reweighting can raise a margin above the proportion that actually
+        carries the feature. Here nobody does, so 90% is not merely hard, it is
+        unreachable at any weight:
+
+        >>> from onlinerake import OnlineRakingSGD, Targets
+        >>> raker = OnlineRakingSGD(Targets(rare=0.90))
+        >>> for _ in range(20):
+        ...     raker.partial_fit({"rare": 0})
         >>> analysis = analyze_infeasibility(raker)
-        >>> if not analysis.is_feasible:
-        ...     print("Original targets infeasible")
-        ...     print(f"Reason: {analysis.infeasibility_type}")
-        ...     print(f"Suggested compromise: {analysis.compromise_targets}")
+        >>> analysis.is_feasible
+        False
+        >>> analysis.infeasibility_type
+        'structural'
+        >>> analysis.achievable_bounds
+        {'rare': (0.0, 0.0)}
+        >>> analysis.compromise_targets
+        {'rare': 0.0}
     """
     if raker._n_obs == 0:
         return InfeasibilityAnalysis(
@@ -1112,15 +1124,15 @@ def suggest_feasible_targets(
         Dictionary of suggested feasible targets for each feature.
 
     Examples:
-        >>> # Original targets may be infeasible
-        >>> targets = Targets(feature=0.90)  # Very extreme
-        >>> raker = OnlineRakingSGD(targets)
-        >>> for obs in data:
-        ...     raker.partial_fit(obs)
-        >>>
-        >>> # Get suggested feasible targets
-        >>> feasible = suggest_feasible_targets(raker, max_weight_ratio=50)
-        >>> print(f"Original: 0.90, Feasible: {feasible['feature']:.2f}")
+        The compromise half of :func:`analyze_infeasibility`, for when you want
+        the numbers and not the diagnosis:
+
+        >>> from onlinerake import OnlineRakingSGD, Targets
+        >>> raker = OnlineRakingSGD(Targets(rare=0.90))
+        >>> for _ in range(20):
+        ...     raker.partial_fit({"rare": 0})
+        >>> suggest_feasible_targets(raker, max_weight_ratio=50)
+        {'rare': 0.0}
     """
     analysis = analyze_infeasibility(raker, max_weight_ratio=max_weight_ratio)
     return analysis.compromise_targets
@@ -1216,13 +1228,21 @@ def compare_to_ipf(
     Examples:
         >>> from onlinerake import OnlineRakingMWU, BatchIPF, Targets
         >>> targets = Targets(female=0.51, college=0.32)
-        >>> mwu = OnlineRakingMWU(targets, learning_rate=0.5)
+        >>> data = [{"female": i % 2, "college": (i % 3) == 0} for i in range(60)]
+        >>> mwu = OnlineRakingMWU(targets, learning_rate=0.5, n_sgd_steps=3)
         >>> for obs in data:
         ...     mwu.partial_fit(obs)
         >>> ipf = BatchIPF(targets).fit(data)
         >>> comparison = compare_to_ipf(mwu, ipf)
-        >>> print(f"Weight KL from IPF: {comparison.weight_kl:.6f}")
-        >>> print(f"Margin MSE: {comparison.margin_mse:.6f}")
+
+        Under the conditions the Note below lists, MWU lands close to the batch
+        solution -- close in the weights themselves, and closer still in the
+        margins they produce:
+
+        >>> comparison.weight_kl < 0.01
+        True
+        >>> comparison.margin_mse < 1e-4
+        True
 
     Note:
         For MWU to closely match IPF:
@@ -1314,8 +1334,14 @@ def optimal_mwu_learning_rate(n_obs: int, n_features: int) -> float:
         Recommended learning rate for MWU.
 
     Examples:
-        >>> lr = optimal_mwu_learning_rate(n_obs=1000, n_features=4)
-        >>> print(f"Recommended learning rate: {lr:.3f}")
+        >>> print(f"{optimal_mwu_learning_rate(n_obs=1000, n_features=4):.3f}")
+        0.235
+
+        The bound goes as ``1/sqrt(T)``, so a longer stream warrants a smaller
+        step -- ten times the observations, roughly a third the rate:
+
+        >>> print(f"{optimal_mwu_learning_rate(n_obs=10000, n_features=4):.3f}")
+        0.086
 
     Note:
         This is a theoretical guideline. In practice:

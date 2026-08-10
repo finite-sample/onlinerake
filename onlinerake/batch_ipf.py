@@ -34,12 +34,28 @@ class BatchIPF:
         max_weight: Upper bound for weights to prevent explosion.
 
     Examples:
-        >>> targets = Targets(age=0.4, gender=0.5, education=0.3)
-        >>> ipf = BatchIPF(targets)
-        >>> data = [{'age': 1, 'gender': 0, 'education': 1}, ...]
-        >>> ipf.fit(data)
-        >>> print(ipf.weights)
-        >>> print(ipf.margins)
+        >>> targets = Targets(female=0.5, college=0.3)
+        >>> data = [
+        ...     {"female": 1, "college": 1},
+        ...     {"female": 1, "college": 0},
+        ...     {"female": 0, "college": 1},
+        ...     {"female": 0, "college": 0},
+        ...     {"female": 1, "college": 0},
+        ...     {"female": 0, "college": 0},
+        ... ]
+        >>> ipf = BatchIPF(targets).fit(data)
+        >>> ipf.converged
+        True
+
+        This is the batch reference the streaming rakers are compared against,
+        and the contrast is the point: IPF sees the whole sample at once and
+        lands *on* the targets, where
+        :class:`~onlinerake.online_raking_sgd.OnlineRakingSGD` approaches them.
+
+        >>> {name: round(value, 6) for name, value in ipf.margins.items()}
+        {'college': 0.3, 'female': 0.5}
+        >>> ipf.weights.round(4)
+        array([0.9 , 1.05, 0.9 , 1.05, 1.05, 1.05])
     """
 
     def __init__(

@@ -545,7 +545,12 @@ def theoretical_convergence_bound(
         ...     initial_lr=5.0,
         ...     power=0.6
         ... )
-        >>> print(f"Expected loss bound: {bounds['expected_loss_bound']:.6f}")
+        >>> bounds["convergence_rate"]
+        'O(1/T^0.40)'
+        >>> bounds["satisfies_robbins_monro"]
+        True
+        >>> print(f"{bounds['expected_loss_bound']:.6f}")
+        1.261915
     """
     if learning_rate_schedule == "polynomial":
         # For polynomial decay with Robbins-Monro compliant power
