@@ -31,6 +31,12 @@ lives on the quantity that can carry it.
   boundary — and measured 0.470 anytime coverage at `OnlineRakingMWU`'s default.
 - **`summarize_raking_results()` no longer takes `confidence_level`.** Its
   margin section reports calibration, which has no confidence level.
+- **`fit_one`**, on both rakers. It was a bare alias for `partial_fit`, labeled
+  "backward compatibility" against a 1.x that this release already breaks in
+  larger ways. Two names for one method is a question every reader has to answer
+  before writing a line. Use `partial_fit` — it is what sklearn calls it.
+
+### Changed
 - **`tolerance`, on the two functions that meant different things by it.**
   `analyze_convergence` now takes `loss_tolerance` (a squared-error loss,
   default 1e-6) and `check_target_feasibility` takes `margin_tolerance` (a
@@ -39,12 +45,6 @@ lives on the quantity that can carry it.
 - **`verify_robbins_monro(T=...)` is now `n_steps`**, and
   `RobbinsMonroVerification.T_evaluated` is `n_steps_evaluated`. It was the only
   single-letter parameter in the package.
-- **`fit_one`**, on both rakers. It was a bare alias for `partial_fit`, labeled
-  "backward compatibility" against a 1.x that this release already breaks in
-  larger ways. Two names for one method is a question every reader has to answer
-  before writing a line. Use `partial_fit` — it is what sklearn calls it.
-
-### Changed
 - **`n_obs` is now `n_observations` everywhere, and the observation count comes
   before the feature count everywhere.** `optimal_mwu_learning_rate` took
   `(n_obs, n_features)` while `mwu_convergence_analysis` and
