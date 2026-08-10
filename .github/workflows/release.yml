@@ -72,3 +72,16 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           attestations: true
+          # Codex's review on this PR: the concurrency group serialises a manual
+          # dispatch and a tag push aimed at one version, it does not
+          # deduplicate them, and cancel-in-progress is false -- so the queued
+          # run starts afterwards and uploads identical files. A completed run
+          # is not covered by concurrency at all, so a rerun does the same. PyPI
+          # answers with a 400 and the release goes red having already
+          # succeeded. The `if:` above cannot cover this: it decides which
+          # builds may publish, not what happens when one publishes twice.
+          #
+          # Also fixed in py-canon's template (gojiplus/py-canon#20) so newly
+          # generated repos get it, but the publish job lives here rather than
+          # in the reusable workflow, so this file needs it in its own right.
+          skip-existing: true
