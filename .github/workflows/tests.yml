@@ -54,6 +54,19 @@ jobs:
     - name: Run docstring examples
       run: uv run pytest --doctest-modules onlinerake/ -v
 
+    # Nothing ran the files in examples/ either. Two of the five were broken:
+    # one called a keyword that never existed on the raker, and one used a
+    # keyword this release renamed. Both are the first thing a new user runs.
+    # Five and a half seconds for all of them.
+    - name: Run the bundled examples
+      run: |
+        for example in examples/*.py; do
+          case "$example" in */__init__.py) continue ;; esac
+          echo "::group::$example"
+          uv run python "$example" > /dev/null
+          echo "::endgroup::"
+        done
+
     # Every test file except the Monte Carlo studies, which get their own step.
     # Naming files explicitly is how test_new_features.py,
     # test_theoretical_features.py, test_model_assisted.py and

@@ -281,10 +281,23 @@ def run_ad_calibration_example() -> None:
             print("\n🎯 Calibration (is_young):")
             print(f"   Target: {cal.target:.3f}   Achieved: {cal.estimate:.3f}")
             print(f"   Gap: {cal.gap:+.4f}   Run-to-run SE: {cal.std_error:.4f}")
-            print(f"   gap/se: {cal.gap_ratio:.2f}", end="   ")
+            # gap_ratio is reported, not thresholded. At fixed calibration
+            # effort its numerator is flat in the stream length while its
+            # denominator falls, so it rises with n on an unchanged raker --
+            # 3.26, 4.56, 7.02, 16.26 at n = 250, 1000, 4000, 12000. A "< 1
+            # means arrived" rule therefore calls the same calibration worse
+            # simply because more observations turned up. That cutoff was
+            # withdrawn from MarginCalibration; this line used to apply it
+            # anyway.
+            print(f"   gap/se: {cal.gap_ratio:.2f}   (no absolute threshold)")
+            print(
+                f"   unclosed: {cal.unclosed_fraction:.1%} of the initial "
+                "miscalibration remains",
+                end="   ",
+            )
             print(
                 "(arrived)"
-                if cal.gap_ratio < 1.0
+                if cal.unclosed_fraction < 0.05
                 else "(stopped short -- raise learning_rate * n_sgd_steps)"
             )
 

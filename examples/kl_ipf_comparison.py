@@ -244,7 +244,9 @@ def main():
     print()
 
     n_features = len(targets.feature_names)
-    suggested_lr = optimal_mwu_learning_rate(n_obs=n_obs, n_features=n_features)
+    suggested_lr = optimal_mwu_learning_rate(
+        n_observations=n_obs, n_features=n_features
+    )
 
     print(f"For n_obs={n_obs}, n_features={n_features}:")
     print(f"  Suggested learning rate: {suggested_lr:.3f}")

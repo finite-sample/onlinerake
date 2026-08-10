@@ -307,12 +307,63 @@ class TestStreamingInference:
 
     def test_path_dependent_variance(self):
         """Should estimate path-dependent variance."""
-        result = estimate_path_dependent_variance(self.raker, "age")
+        result = estimate_path_dependent_variance(self.raker, "age", n_permutations=5)
 
         assert "total_variance" in result
         assert "sampling_variance" in result
         assert "path_variance" in result
         assert result["total_variance"] >= result["sampling_variance"]
+
+    def test_path_variance_measures_order_and_nothing_else(self):
+        """It refits shuffled orders; it does not read the history tail.
+
+        The old implementation took the variance of the margin over the last
+        ten ``history`` entries. Those are ten points on one path at ten
+        different sample sizes, so their spread measures how far convergence
+        has flattened, not how much the answer depends on arrival order.
+        Against the permutation spread it came to 0.08, 0.04 and 0.02 of it at
+        n = 200, 400, 800 -- understating the effect more than tenfold, and
+        getting worse as the stream grew.
+
+        Comparing against a freshly computed permutation spread is the direct
+        statement of what the number is supposed to be.
+        """
+        import numpy as np
+
+        from onlinerake.diagnostics import _refit_margins
+
+        reported = estimate_path_dependent_variance(
+            self.raker, "age", n_permutations=25, seed=3
+        )["path_variance"]
+
+        rng = np.random.default_rng(11)
+        independent = float(
+            np.var(
+                [
+                    _refit_margins(self.raker, rng.permutation(self.raker._n_obs))[
+                        "age"
+                    ]
+                    for _ in range(25)
+                ],
+                ddof=1,
+            )
+        )
+        # Two 25-draw variance estimates of one quantity, under different
+        # seeds, so their ratio carries real sampling error: this band is
+        # deliberately generous. The old statistic sat 12x to 50x below it.
+        assert 0.25 < reported / independent < 4.0
+
+    def test_path_variance_is_reproducible_and_seed_dependent(self):
+        """A randomized estimator must say which randomness produced it.
+
+        Without the second half, a function that ignored ``seed`` outright
+        would pass the reproducibility assertion.
+        """
+        a = estimate_path_dependent_variance(self.raker, "age", seed=0)
+        b = estimate_path_dependent_variance(self.raker, "age", seed=0)
+        c = estimate_path_dependent_variance(self.raker, "age", seed=99)
+        assert a["path_variance"] == b["path_variance"]
+        assert a["path_variance"] != c["path_variance"]
 
     def test_streaming_estimator(self):
         """StreamingEstimator should track snapshots and retroactive changes."""

@@ -17,6 +17,7 @@ import pytest
 from onlinerake import OnlineRakingMWU, OnlineRakingSGD, Targets
 from onlinerake.diagnostics import (
     AUTO_REPLICATE_SIZE,
+    _group_assignment,
     _replicate_margins,
     _unfitted_copy,
     estimate_margin_std_error,
@@ -270,7 +271,7 @@ class TestAutoPicksAScheme:
         """
         raker = _fitted(n=80)
         with pytest.raises(ValueError, match="expected a resolved scheme"):
-            _replicate_margins(raker, "auto", 10)
+            _replicate_margins(raker, "auto", 10, 0)
 
 
 class TestMarginCalibration:
@@ -390,3 +391,69 @@ def test_version_matches_pyproject():
     pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
     declared = tomllib.loads(pyproject.read_text())["project"]["version"]
     assert onlinerake.__version__ == declared
+
+
+class TestGroupingDoesNotTrackArrivalOrder:
+    """``random_groups`` must not assign by index.
+
+    A systematic ``arange(n) % groups`` collapses onto any period in arrival
+    order that shares a factor with ``groups``. With the default ten groups and
+    every tenth observation positive, all of them land in one replicate: the
+    spread across replicates then measures the index pattern rather than
+    sampling variability, under a scheme whose name promises the opposite.
+    """
+
+    @staticmethod
+    def _periodic(n=400, period=10):
+        """Every ``period``-th observation is the positive one."""
+        raker = OnlineRakingSGD(Targets(female=0.5))
+        for i in range(n):
+            raker.partial_fit({"female": 1 if i % period == 0 else 0})
+        return raker
+
+    def test_a_period_matching_the_group_count_does_not_split_perfectly(self):
+        """The mechanism, asserted directly rather than through the variance.
+
+        Under the old assignment group 0 held all 40 positives and the other
+        nine held none. Any grouping that reproduces that is measuring the
+        index.
+        """
+        raker = self._periodic()
+        n = raker._n_obs
+        assignment = _group_assignment(n, 10, seed=0)
+        female = raker._features[:n, raker._feature_names.index("female")]
+
+        per_group = [int(female[assignment == g].sum()) for g in range(10)]
+        assert sum(per_group) == 40
+        # Not all in one group, and not a single group empty of them either.
+        assert max(per_group) < 40
+        assert sum(1 for c in per_group if c > 0) >= 5
+
+    def test_the_variance_no_longer_reports_the_index_pattern(self):
+        """Systematic assignment reported 1.0e-2 here; randomized, ~1e-4.
+
+        Bounded well above the randomized values and well below the systematic
+        one, so it fails if the assignment ever goes back to tracking the
+        index.
+        """
+        raker = self._periodic()
+        variance = estimate_margin_variance(
+            raker, "female", method="random_groups", n_replicates=10
+        )
+        assert variance < 5e-3, (
+            f"variance {variance:.2e} is close to the 1.0e-2 the systematic "
+            "assignment produced; grouping may be tracking arrival order again"
+        )
+
+    def test_the_answer_is_reproducible_but_the_seed_matters(self):
+        """Randomized, not arbitrary: same seed same answer, different seed not.
+
+        The second half is the falsifier. A grouping that ignored the seed
+        would satisfy the first.
+        """
+        raker = self._periodic()
+        first = estimate_margin_variance(raker, "female", seed=0)
+        again = estimate_margin_variance(raker, "female", seed=0)
+        other = estimate_margin_variance(raker, "female", seed=12345)
+        assert first == again
+        assert first != other

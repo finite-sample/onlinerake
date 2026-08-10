@@ -128,6 +128,34 @@ class FeasibilityReport:
     recommendations: list[str]
 
 
+def _group_assignment(n: int, groups: int, seed: int) -> np.ndarray:
+    """Balanced group labels for ``n`` observations, in random order.
+
+    Balanced because ``arange(n) % groups`` gives each group the same size to
+    within one; randomly ordered because *which* observation lands in which
+    group must not track the arrival index.
+
+    The systematic version was a trap. When arrival order has a period sharing
+    a factor with ``groups`` -- every tenth event positive, with the default
+    ten groups -- the modulo puts every one of those events in a single
+    replicate. Measured on exactly that stream at n=400: the systematic
+    assignment gave group 0 all 40 positives and the other nine none, and
+    reported a variance of 1.0e-2 against 1.4e-4 to 2.1e-3 for randomized
+    assignments. It was measuring the index pattern rather than sampling
+    variability, under a scheme named ``random_groups``.
+
+    Args:
+        n: Number of observations.
+        groups: Number of replicate groups.
+        seed: Seed, so a variance estimate is reproducible and a caller can
+            check how much the answer depends on the grouping.
+
+    Returns:
+        np.ndarray: Group label per observation, shape ``(n,)``.
+    """
+    return np.random.default_rng(seed).permutation(np.arange(n) % groups)
+
+
 def resolve_replication_method(
     method: str, n_observations: int, n_replicates: int
 ) -> str:
@@ -147,23 +175,38 @@ def resolve_replication_method(
 
     Measured against the margin's own spread over 500-600 independent streams,
     with each scheme's mean taken over 120 further streams and the two schemes
-    paired on identical streams (2 SE bands):
+    paired on identical streams, as ratios to that truth:
 
-    ===== ===== ==================== ==================== ==============
-    n     n/G   random_groups        jackknife            paired jk - rg
-    ===== ===== ==================== ==================== ==============
-    300      30 0.838 [0.802, 0.875] 0.959 [0.920, 0.999] +14.4%
-    600      60 0.923 [0.871, 0.974] 0.997 [0.940, 1.055]  +8.1%
-    1200    120 0.958 [0.920, 0.997] 0.995 [0.954, 1.037]  +3.9%
-    ===== ===== ==================== ==================== ==============
+    ===== ===== ============= ========= =====================
+    n     n/G   random_groups jackknife paired jk - rg
+    ===== ===== ============= ========= =====================
+    300      30 0.919         1.026     +11.7%  (6.5 sigma)
+    600      60 0.900         0.955      +6.0%  (5.0 sigma)
+    1200    120 0.929         0.961      +3.5%  (3.6 sigma)
+    ===== ===== ============= ========= =====================
 
-    Jackknife is within noise of the truth at every size; ``random_groups``
-    understates, by an amount governed by ``n/G`` and decaying as it grows.
-    :data:`AUTO_REPLICATE_SIZE` sits at the point where that understatement has
-    fallen to roughly 5%. **The constant is a judgment, and the percentages
-    above are specific to the process they were measured on** -- two binary
+    **What supports the rule is the last column, not the first two.** The paired
+    gap shrinks steadily as ``n/G`` grows -- 11.7%, 6.0%, 3.5% -- so the scheme
+    you pick matters most where replicates are small, which is what
+    :data:`AUTO_REPLICATE_SIZE` keys on. Jackknife is above random groups at
+    every size, by 3.6 to 6.5 sigma paired.
+
+    **What does not support it is any claim about the absolute levels.** An
+    earlier version of this table was measured under a systematic
+    ``arange(n) % G`` grouping and showed ``random_groups`` climbing 0.838 ->
+    0.923 -> 0.958, which read as an understatement decaying to about 5% by the
+    threshold. Under the randomized grouping this package now uses (see
+    :func:`_group_assignment`), it does not climb: it sits at 0.90 to 0.93
+    throughout, and jackknife is no longer within noise of 1.0 at the larger
+    sizes either. Both schemes understate somewhat at every size tried, and the
+    threshold is not a point where that stops.
+
+    So :data:`AUTO_REPLICATE_SIZE` is **a judgment about where the choice stops
+    mattering much, not a point where either scheme becomes correct.** The
+    percentages are specific to the process they were measured on -- two binary
     margins under this package's defaults. Treat the rule as a sensible default,
-    not a law, and pass an explicit scheme if the choice matters to you.
+    not a law, pass an explicit scheme if the choice matters to you, and do not
+    read either column as a calibration guarantee.
 
     The rule also bounds its own cost. Both schemes are linear in ``n``, and
     jackknife refits roughly ``9x`` the rows, so its cost *rises* with ``n`` --
@@ -317,6 +360,7 @@ def _replicate_margins(
     raker: OnlineRakingSGD,
     method: str,
     n_replicates: int,
+    seed: int,
 ) -> tuple[np.ndarray, int]:
     """Calibrate each replicate subsample and collect its margins.
 
@@ -367,6 +411,9 @@ def _replicate_margins(
         method: An already-resolved scheme -- ``"random_groups"`` or
             ``"jackknife"``. ``"auto"`` is rejected; resolve it first.
         n_replicates: Number of groups, capped at the number of observations.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         tuple: An array of shape ``(groups, n_features)`` holding each
@@ -384,7 +431,7 @@ def _replicate_margins(
         )
     n = raker._n_obs
     groups = max(2, min(int(n_replicates), n))
-    assignment = np.arange(n) % groups
+    assignment = _group_assignment(n, groups, seed)
     positions = np.arange(n)
     names = raker._feature_names
 
@@ -408,6 +455,7 @@ def _replication_variances(
     raker: OnlineRakingSGD,
     method: str,
     n_replicates: int,
+    seed: int,
 ) -> dict[str, float]:
     """Replication variance of every weighted margin, in one pass.
 
@@ -419,6 +467,9 @@ def _replication_variances(
         raker: A fitted raker.
         method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
         n_replicates: Number of groups.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         dict: Estimated variance per feature.
@@ -434,7 +485,7 @@ def _replication_variances(
         # one draw. That is the proportion_confint(0, 20) -> (0.0, 0.0) defect.
         return dict.fromkeys(raker._feature_names, float("nan"))
 
-    margins, groups = _replicate_margins(raker, method, n_replicates)
+    margins, groups = _replicate_margins(raker, method, n_replicates, seed)
     deviations = margins - margins.mean(axis=0)
     scale = (
         1.0 / (groups * (groups - 1))
@@ -450,6 +501,7 @@ def estimate_margin_variance(
     feature: str,
     method: str = "auto",
     n_replicates: int = DEFAULT_N_REPLICATES,
+    seed: int = 0,
 ) -> float:
     """Estimate the sampling variance of a weighted margin by replication.
 
@@ -499,6 +551,9 @@ def estimate_margin_variance(
         n_replicates: Number of replicate groups. Capped at the number of
             observations, and at least 2. More groups give a steadier estimate;
             under ``"jackknife"`` they also cost proportionally more.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         Estimated variance of the weighted margin. NaN if the raker holds no
@@ -512,7 +567,7 @@ def estimate_margin_variance(
     if raker._n_obs == 0:
         return np.nan
 
-    return _replication_variances(raker, method, n_replicates)[feature]
+    return _replication_variances(raker, method, n_replicates, seed)[feature]
 
 
 def estimate_margin_std_error(
@@ -520,6 +575,7 @@ def estimate_margin_std_error(
     feature: str,
     method: str = "auto",
     n_replicates: int = DEFAULT_N_REPLICATES,
+    seed: int = 0,
 ) -> float:
     """Estimate standard error of a weighted margin.
 
@@ -528,11 +584,14 @@ def estimate_margin_std_error(
         feature: Name of the feature.
         method: Replication scheme, passed to :func:`estimate_margin_variance`.
         n_replicates: Number of replicate groups.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         Estimated standard error.
     """
-    var = estimate_margin_variance(raker, feature, method, n_replicates)
+    var = estimate_margin_variance(raker, feature, method, n_replicates, seed)
     return float(np.sqrt(var)) if not np.isnan(var) else np.nan
 
 
@@ -564,6 +623,7 @@ def margin_calibration(
     raker: OnlineRakingSGD,
     method: str = "auto",
     n_replicates: int = DEFAULT_N_REPLICATES,
+    seed: int = 0,
 ) -> list[MarginCalibration]:
     """How closely each weighted margin reached its target.
 
@@ -576,6 +636,9 @@ def margin_calibration(
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
         method: Replication scheme, passed to :func:`estimate_margin_variance`.
         n_replicates: Number of replicate groups.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         List of MarginCalibration objects, one per feature.
@@ -591,7 +654,7 @@ def margin_calibration(
     if raker._n_obs == 0:
         variances = dict.fromkeys(raker._feature_names, np.nan)
     else:
-        variances = _replication_variances(raker, method, n_replicates)
+        variances = _replication_variances(raker, method, n_replicates, seed)
 
     for feature in raker._feature_names:
         target = raker.targets[feature]

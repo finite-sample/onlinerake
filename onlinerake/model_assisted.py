@@ -821,6 +821,7 @@ def model_assisted_variance(
     raker: ModelAssistedRaker,
     method: str = "auto",
     n_replicates: int = 10,
+    seed: int = 0,
 ) -> float:
     """Replication variance of the GREG model-assisted estimate.
 
@@ -850,6 +851,9 @@ def model_assisted_variance(
             ``"random_groups"`` for disjoint groups, or ``"jackknife"`` for
             delete-a-group.
         n_replicates: Number of groups, capped at the number of observations.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         float: Estimated variance of ``raker.model_assisted_estimate``, or
@@ -858,7 +862,7 @@ def model_assisted_variance(
     Raises:
         ValueError: If ``method`` is unknown or ``n_replicates`` is below two.
     """
-    from .diagnostics import resolve_replication_method
+    from .diagnostics import _group_assignment, resolve_replication_method
 
     n = raker._n_obs
     # Resolved before the subset rule and the scaling factor below both branch
@@ -870,7 +874,10 @@ def model_assisted_variance(
         return float("nan")
 
     groups = max(2, min(int(n_replicates), n))
-    assignment = np.arange(n) % groups
+    # Same randomized balanced assignment the margin path uses. A systematic
+    # `arange(n) % groups` collapses onto any period in arrival order that
+    # shares a factor with `groups`.
+    assignment = _group_assignment(n, groups, seed)
     positions = np.arange(n)
     subsets = (
         (positions[assignment == g] for g in range(groups))
@@ -894,6 +901,7 @@ def model_assisted_std_error(
     raker: ModelAssistedRaker,
     method: str = "auto",
     n_replicates: int = 10,
+    seed: int = 0,
 ) -> float:
     """Standard error of the GREG model-assisted estimate.
 
@@ -901,6 +909,9 @@ def model_assisted_std_error(
         raker: A fitted :class:`ModelAssistedRaker`.
         method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
         n_replicates: Number of groups.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         float: Square root of :func:`model_assisted_variance`, or ``nan`` where
@@ -909,7 +920,7 @@ def model_assisted_std_error(
     Raises:
         ValueError: If ``method`` is unknown or ``n_replicates`` is below two.
     """
-    variance = model_assisted_variance(raker, method, n_replicates)
+    variance = model_assisted_variance(raker, method, n_replicates, seed)
     return float(np.sqrt(variance)) if np.isfinite(variance) else float("nan")
 
 
@@ -918,6 +929,7 @@ def model_assisted_confidence_interval(
     confidence_level: float = 0.95,
     method: str = "auto",
     n_replicates: int = 10,
+    seed: int = 0,
 ) -> tuple[float, float]:
     """Confidence interval for the GREG model-assisted estimate.
 
@@ -926,6 +938,9 @@ def model_assisted_confidence_interval(
         confidence_level: Coverage the interval claims.
         method: ``"auto"``, ``"random_groups"`` or ``"jackknife"``.
         n_replicates: Number of groups.
+        seed: Seed for the balanced-but-randomized grouping. Vary it to see
+            how much the estimate depends on which observations shared a
+            replicate.
 
     Returns:
         tuple: Lower and upper bounds. ``(nan, nan)`` when the variance is
@@ -936,7 +951,7 @@ def model_assisted_confidence_interval(
     """
     from .diagnostics import _z_score
 
-    std_error = model_assisted_std_error(raker, method, n_replicates)
+    std_error = model_assisted_std_error(raker, method, n_replicates, seed)
     estimate = float(raker.model_assisted_estimate)
     if not np.isfinite(std_error) or not np.isfinite(estimate):
         return (float("nan"), float("nan"))

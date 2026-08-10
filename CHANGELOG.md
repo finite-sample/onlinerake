@@ -106,6 +106,49 @@ lives on the quantity that can carry it.
 - **CI now runs the docstring examples** (`pytest --doctest-modules onlinerake/`).
 
 ### Fixed
+- **`random_groups` assigned replicates by arrival index**, so any period in
+  the stream sharing a factor with the group count collapsed into one
+  replicate. Measured on a stream where every tenth observation is positive,
+  with the default ten groups: the old `arange(n) % groups` put all 40
+  positives in group 0 and none in the other nine, and reported a variance of
+  1.0e-2 against 1.4e-4 to 2.1e-3 for randomized assignments. It was measuring
+  the index pattern, under a scheme named "random". Grouping is now balanced
+  and randomized, with a `seed` on all six replication entry points so the
+  answer stays reproducible and the caller can test how much it depends on the
+  grouping. `estimate_margin_std_error` accepted `seed` and dropped it on the
+  way through; pyright caught that.
+
+  **This moved the numbers behind the `"auto"` threshold, and the docstring now
+  says so.** The old table was measured under systematic grouping and showed
+  `random_groups` climbing 0.838 → 0.923 → 0.958 with `n/G`, which read as an
+  understatement decaying to about 5% by the threshold. Re-measured under
+  randomized grouping it does not climb — 0.919, 0.900, 0.929 — and jackknife
+  is no longer within noise of 1.0 at the larger sizes either. What survives is
+  the paired gap, which still shrinks with `n/G` (+11.7%, +6.0%, +3.5% at 6.5,
+  5.0 and 3.6 sigma), and that is what the rule keys on. `AUTO_REPLICATE_SIZE`
+  is now documented as a judgment about where the choice stops mattering, not a
+  point where either scheme becomes correct.
+- **`estimate_path_dependent_variance` reported something other than path
+  dependence.** Its `path_variance` was the variance of the margin over the
+  last ten `history` entries — ten points on a single path at ten different
+  sample sizes, serially dependent and still converging. Against the quantity
+  the name promises (refit the same observations in shuffled arrival orders) it
+  came to 0.08, 0.04 and 0.02 of it at n = 200, 400, 800: understating order
+  dependence more than tenfold and getting worse as the stream grew, because a
+  converging path flattens while genuine order-dependence does not. It now
+  refits `n_permutations` shuffled orders. On a 300-observation stream order
+  dependence is 40% of the total, where the old statistic reported about 6%.
+  The two components are still summed on an independence assumption, which the
+  docstring now states rather than implies.
+- **Two of the five bundled examples were broken, and nothing ran them.**
+  `recommendation_balancing.py` passed `n_steps=` to a raker whose parameter is
+  `n_sgd_steps` — a `TypeError` that predates this release.
+  `kl_ipf_comparison.py` used the keyword this release renamed.
+  `ad_targeting_calibration.py` applied a `gap_ratio < 1` "arrived" cutoff, the
+  exact threshold withdrawn from `MarginCalibration` for rising with `n` on an
+  unchanged raker; it now reports `gap_ratio` without a threshold and judges
+  convergence with `unclosed_fraction`. CI runs all five examples now — 5.4
+  seconds for the set.
 - **Replicates refitted a different estimator than the one they were measuring,
   for two supported `ModelAssistedRaker` configurations.** Both replicate paths
   rebuilt each observation from the demographic feature row, which is not the
