@@ -106,6 +106,32 @@ lives on the quantity that can carry it.
 - **CI now runs the docstring examples** (`pytest --doctest-modules onlinerake/`).
 
 ### Fixed
+- **`OnlineRakingMWU` accepted a learning-rate schedule and never stepped it.**
+  It stored the schedule and reported `uses_lr_schedule is True`, but its
+  update read `self.learning_rate` directly instead of the accessor that
+  advances the schedule, so the rate stayed at its initial value for the whole
+  stream where the parent's decayed 5.0 → 0.65 over thirty observations. The
+  weights it produced were a constant-rate run's. The consequence reached the
+  diagnostics: `analyze_convergence` reads the schedule, so it certified
+  Robbins-Monro compliance for a raker that was not running one — and this
+  package documents constant rates as *not* satisfying Robbins-Monro. Found by
+  the API-consistency test comparing annotations, not by a behavioural test.
+- **`OnlineRakingMWU` narrowed two of its parent's annotations.**
+  `max_history` was `int` against the parent's `int | None`, and
+  `learning_rate` was `float` against `float | LearningRateSchedule`. Runtime
+  accepted both, so only a type-checked caller saw the narrower surface. The
+  consistency suite now compares annotations, not just parameter names.
+- **`path_contribution_pct` reported 0% when it was unestimable.** Below two
+  permutations the order component is `nan`, and the percentage came back `0` —
+  a confident claim that arrival order does not matter, made precisely where
+  nothing was measured. It is `nan` now. Same defect as the n<2 zero-width
+  interval, in a different place.
+- **`model_assisted_confidence_interval` validated its arguments only when it
+  had data.** The standard error was computed first and the function returned
+  early on a non-finite one, so `_z_score` — the only thing checking
+  `confidence_level` — was skipped below two observations.
+  `confidence_level=2` raised at n=5 and returned `(nan, nan)` at n=1. Whether
+  an argument is legal no longer depends on the sample size.
 - **`random_groups` assigned replicates by arrival index**, so any period in
   the stream sharing a factor with the group count collapsed into one
   replicate. Measured on a stream where every tenth observation is positive,

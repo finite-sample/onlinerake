@@ -951,6 +951,12 @@ def model_assisted_confidence_interval(
     """
     from .diagnostics import _z_score
 
+    # Validated first, so whether an argument is legal does not depend on how
+    # much data happens to be present. `_z_score` used to be reached only after
+    # the early return below, which meant confidence_level=2 raised at n=5 and
+    # returned (nan, nan) at n=1 -- one call, two contracts.
+    _z_score(confidence_level)
+
     std_error = model_assisted_std_error(raker, method, n_replicates, seed)
     estimate = float(raker.model_assisted_estimate)
     if not np.isfinite(std_error) or not np.isfinite(estimate):

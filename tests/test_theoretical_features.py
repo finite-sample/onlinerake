@@ -571,3 +571,90 @@ class TestTheNumericalFallbackRuns:
         assert result.condition_2_satisfied
         assert result.n_steps_evaluated == 500
         assert any("Evaluated over" in note for note in result.analysis_notes)
+
+
+class TestUnestimableIsNotZero:
+    """An unmeasured quantity reports ``nan``, never a confident zero.
+
+    This is the same defect as the n<2 zero-width interval, in a different
+    place: below two permutations the order component cannot be estimated, and
+    reporting a 0% contribution there asserts that arrival order does not
+    matter -- which is exactly what was not measured.
+    """
+
+    def test_too_few_permutations_gives_nan_not_zero_percent(self):
+        raker = OnlineRakingSGD(Targets(age=0.5))
+        for i in range(10):
+            raker.partial_fit({"age": i % 2})
+
+        result = estimate_path_dependent_variance(raker, "age", n_permutations=1)
+
+        assert np.isnan(result["path_variance"])
+        assert np.isnan(result["total_variance"])
+        assert np.isnan(result["path_contribution_pct"]), (
+            "an unestimable order contribution was reported as 0%"
+        )
+
+    def test_a_real_estimate_still_reports_a_number(self):
+        """The falsifier: a function returning nan unconditionally would pass
+        the test above.
+        """
+        raker = OnlineRakingSGD(Targets(age=0.5))
+        for i in range(60):
+            raker.partial_fit({"age": i % 2})
+
+        result = estimate_path_dependent_variance(raker, "age", n_permutations=8)
+        assert np.isfinite(result["path_contribution_pct"])
+
+
+class TestMWUActuallyStepsItsSchedule:
+    """Accepting a schedule and honouring one are different things.
+
+    ``OnlineRakingMWU`` took a ``LearningRateSchedule``, stored it, and
+    reported ``uses_lr_schedule is True`` -- while its update read
+    ``self.learning_rate`` directly and never called the accessor that advances
+    the schedule. The rate therefore stayed at its initial value for the whole
+    stream. Nothing raised, and the weights it produced were those of a
+    constant-rate run.
+
+    The consequence reached the diagnostics: ``analyze_convergence`` reads the
+    schedule, so it certified Robbins-Monro compliance for a raker that was in
+    fact running at a constant rate -- which this package documents as *not*
+    satisfying Robbins-Monro.
+    """
+
+    @staticmethod
+    def _rates(cls, steps=30):
+        schedule = PolynomialDecayLR(initial_lr=5.0, power=0.6, min_lr=0.0)
+        raker = cls(Targets(a=0.5), learning_rate=schedule)
+        seen = []
+        for i in range(steps):
+            raker.partial_fit({"a": i % 2})
+            seen.append(float(raker.learning_rate))
+        return raker, seen
+
+    def test_the_rate_decays_as_the_schedule_says(self):
+        _, rates = self._rates(OnlineRakingMWU)
+        assert rates[0] > rates[-1], (
+            f"learning rate never moved: {rates[0]} -> {rates[-1]}; the "
+            "schedule is accepted but not stepped"
+        )
+        assert rates == sorted(rates, reverse=True)
+
+    def test_it_matches_the_parent_it_subclasses(self):
+        """Both classes share the schedule machinery, so both must step it.
+
+        This is the control: without it, a fix that broke SGD's schedule to
+        match MWU's would satisfy the test above.
+        """
+        _, mwu = self._rates(OnlineRakingMWU)
+        _, sgd = self._rates(OnlineRakingSGD)
+        assert mwu == pytest.approx(sgd)
+
+    def test_a_constant_rate_still_stays_constant(self):
+        """The falsifier: a raker given no schedule must not start decaying."""
+        raker = OnlineRakingMWU(Targets(a=0.5), learning_rate=2.0)
+        for i in range(20):
+            raker.partial_fit({"a": i % 2})
+        assert float(raker.learning_rate) == 2.0
+        assert not raker.uses_lr_schedule

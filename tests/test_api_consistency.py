@@ -122,3 +122,25 @@ class TestTheRakersOfferTheSameSurface:
         mwu = set(inspect.signature(onlinerake.OnlineRakingMWU.__init__).parameters)
         missing = sgd - mwu
         assert not missing, f"OnlineRakingMWU does not accept {sorted(missing)}"
+
+    def test_mwu_does_not_narrow_a_parent_annotation(self):
+        """Accepting the keyword is not enough; it must accept the same values.
+
+        The first version of the ``max_history`` fix annotated it ``int`` where
+        the parent has ``int | None``. Runtime was fine -- ``None`` worked --
+        but a type-checked caller could not pass the value that disables the
+        cap, so the surface was still narrower than the parent's. Comparing
+        names alone cannot see that, which is why this test compares
+        annotations.
+        """
+        sgd = inspect.signature(onlinerake.OnlineRakingSGD.__init__).parameters
+        mwu = inspect.signature(onlinerake.OnlineRakingMWU.__init__).parameters
+        narrowed = {
+            name: (str(p.annotation), str(mwu[name].annotation))
+            for name, p in sgd.items()
+            if name in mwu
+            and p.annotation is not inspect.Parameter.empty
+            and mwu[name].annotation is not inspect.Parameter.empty
+            and p.annotation != mwu[name].annotation
+        }
+        assert not narrowed, f"OnlineRakingMWU narrows: {narrowed}"

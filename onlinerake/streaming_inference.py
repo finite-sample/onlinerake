@@ -275,8 +275,13 @@ def estimate_path_dependent_variance(
         "total_variance": total_variance,
         "sampling_variance": sampling_variance,
         "path_variance": path_variance,
+        # nan, not 0. Below two permutations the component is unestimable, and
+        # reporting a 0% share there is a claim that order does not matter --
+        # which is precisely what was not measured.
         "path_contribution_pct": (
-            100 * path_variance / total_variance if total_variance > 0 else 0
+            100 * path_variance / total_variance
+            if np.isfinite(total_variance) and total_variance > 0
+            else float("nan")
         ),
     }
 

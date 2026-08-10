@@ -770,3 +770,45 @@ class TestReplicatesRefitTheSameEstimator:
         full = _refit_margins(raker, np.arange(raker._n_obs))
         for name, value in raker.margins.items():
             assert full[name] == pytest.approx(value)
+
+
+class TestArgumentValidationDoesNotDependOnSampleSize:
+    """An illegal argument is illegal at every n.
+
+    `model_assisted_confidence_interval` computed the standard error first and
+    returned `(nan, nan)` when it was not finite, so `_z_score` -- the only
+    thing that validates `confidence_level` -- was never reached below two
+    observations. `confidence_level=2` therefore raised at n=5 and returned
+    `(nan, nan)` at n=1: one call, two contracts, decided by how much data
+    happened to be present.
+    """
+
+    @staticmethod
+    def _raker(n):
+        model = LinearOutcomeModel().fit(
+            np.array([[0.0, 0.0], [1.0, 1.0]]), np.array([0.0, 1.0])
+        )
+        targets = ModelAssistedTargets(
+            demographic_targets=Targets(a=0.5, b=0.5),
+            prediction_targets={"p": 0.5},
+        )
+        raker = ModelAssistedRaker(targets, model)
+        for i in range(n):
+            raker.partial_fit({"a": i % 2, "b": 0}, outcome=i % 2)
+        return raker
+
+    @pytest.mark.parametrize("n", [1, 5])
+    def test_an_impossible_confidence_level_always_raises(self, n):
+        from onlinerake.model_assisted import model_assisted_confidence_interval
+
+        with pytest.raises(ValueError, match="confidence_level"):
+            model_assisted_confidence_interval(self._raker(n), confidence_level=2)
+
+    def test_a_legal_level_at_n_equals_one_still_returns_nan(self):
+        """The falsifier. Validating early must not turn the unestimable case
+        into an exception -- ``(nan, nan)`` there is deliberate.
+        """
+        from onlinerake.model_assisted import model_assisted_confidence_interval
+
+        low, high = model_assisted_confidence_interval(self._raker(1))
+        assert np.isnan(low) and np.isnan(high)
