@@ -32,8 +32,8 @@ jupyter notebook docs/notebooks/
 uv run ruff check .
 uv run ruff format .
 
-# Type checking  
-uv run mypy onlinerake/
+# Type checking
+uv run pyright
 ```
 
 ## Types of Contributions

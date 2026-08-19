@@ -181,7 +181,8 @@ def run_ad_calibration_example() -> None:
     # Verify convergence conditions
     rm_check = verify_robbins_monro(schedule)
     print(
-        f"   Robbins-Monro Conditions: Satisfied = {rm_check.condition_1_satisfied and rm_check.condition_2_satisfied}"
+        f"   Robbins-Monro Conditions: Satisfied = "
+        f"{rm_check.condition_1_satisfied and rm_check.condition_2_satisfied}"
     )
 
     sgd_rm_raker = OnlineRakingSGD(
@@ -245,16 +246,22 @@ def run_ad_calibration_example() -> None:
     print(f"\n{'Method':<25} {'Loss':>10} {'ESS':>10} {'Efficiency':>12}")
     print("-" * 57)
     print(
-        f"{'SGD (fixed LR)':<25} {sgd_raker.loss:>10.6f} {sgd_raker.effective_sample_size:>10.1f} {sgd_raker.effective_sample_size / 5000:>12.1%}"
+        f"{'SGD (fixed LR)':<25} {sgd_raker.loss:>10.6f} "
+        f"{sgd_raker.effective_sample_size:>10.1f} "
+        f"{sgd_raker.effective_sample_size / 5000:>12.1%}"
     )
     print(
-        f"{'SGD (Robbins-Monro)':<25} {sgd_rm_raker.loss:>10.6f} {sgd_rm_raker.effective_sample_size:>10.1f} {sgd_rm_raker.effective_sample_size / 5000:>12.1%}"
+        f"{'SGD (Robbins-Monro)':<25} {sgd_rm_raker.loss:>10.6f} "
+        f"{sgd_rm_raker.effective_sample_size:>10.1f} "
+        f"{sgd_rm_raker.effective_sample_size / 5000:>12.1%}"
     )
     print(
-        f"{'MWU':<25} {mwu_raker.loss:>10.6f} {mwu_raker.effective_sample_size:>10.1f} {mwu_raker.effective_sample_size / 5000:>12.1%}"
+        f"{'MWU':<25} {mwu_raker.loss:>10.6f} {mwu_raker.effective_sample_size:>10.1f} "
+        f"{mwu_raker.effective_sample_size / 5000:>12.1%}"
     )
     print(
-        f"{'Batch IPF':<25} {ipf.loss:>10.6f} {ipf.effective_sample_size:>10.1f} {ipf.effective_sample_size / 5000:>12.1%}"
+        f"{'Batch IPF':<25} {ipf.loss:>10.6f} {ipf.effective_sample_size:>10.1f} "
+        f"{ipf.effective_sample_size / 5000:>12.1%}"
     )
 
     # Demonstrate streaming inference features
@@ -323,7 +330,8 @@ def run_ad_calibration_example() -> None:
     for est in summary["margin_estimates"]:
         print(
             f"   {est['feature']}: {est['estimate']:.3f} ± {est['std_error']:.3f} "
-            f"(target: {est['target']:.2f}, bias reduction: {est['bias_reduction_pct']:.1f}%)"
+            f"(target: {est['target']:.2f}, bias reduction: "
+            f"{est['bias_reduction_pct']:.1f}%)"
         )
 
     print("\n" + "=" * 70)

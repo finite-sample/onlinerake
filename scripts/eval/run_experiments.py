@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Reproducible experiments for dual first-order entropy balancing.
+"""Reproducible experiments for dual first-order entropy balancing.
 
 This script solves entropy balancing via:
   1) Dual BFGS (SciPy minimize)
@@ -25,13 +24,15 @@ Outputs (written to --out_dir):
   - run_metadata.json
 
 Usage:
-  python run_experiments_v2.py --out_dir ./outputs --n_seeds 50 --shift_delta 0.05 --hard_alpha 0.1
+  python run_experiments_v2.py --out_dir ./outputs --n_seeds 50 \
+      --shift_delta 0.05 --hard_alpha 0.1
 
 Notes:
 - Synthetic data are constructed so calibration targets are feasible by design:
     x_pop = X^T a, for simplex weights a.
 - Targets use Dirichlet(alpha) sampling:
-    alpha=1.0 is "easy" (diffuse weights), alpha<1 produces more concentrated a and lower ESS.
+    alpha=1.0 is "easy" (diffuse weights), alpha<1 produces more concentrated
+    a and lower ESS.
 - Features are bounded using tanh so entries lie in (-1,1).
 - Batch dual GD uses a data-driven step size:
     eta = 1 / lambda_max(Cov_u[x]) at lambda=0.
@@ -76,16 +77,16 @@ def make_data(
     target_mode: str = "random",
     hard_k: int = 25,
 ):
-    """
-    Generate bounded features X and feasible targets.
+    """Generate bounded features X and feasible targets.
 
     Features:
       X_ij = tanh(Z_ij), Z_ij ~ N(0,1), so X_ij in (-1,1).
 
     Targets (feasible by construction):
       - target_mode="random": draw a ~ Dirichlet(alpha * 1_n) over all n points.
-      - target_mode="extreme": choose a direction v and place a on the hard_k points with
-        largest projection X v, with a_sub ~ Dirichlet(alpha * 1_{hard_k}).
+      - target_mode="extreme": choose a direction v and place a on the hard_k
+        points with largest projection X v, with
+        a_sub ~ Dirichlet(alpha * 1_{hard_k}).
 
     If shift_delta is provided, also return x_pop2 computed from a convex combination
     of two independent draws under the same target_mode.
@@ -264,7 +265,7 @@ def solve_dual_bfgs(
     runtime = time.perf_counter() - t0
 
     lam = res.x
-    g, w = moment_error(lam, X, u, x_pop)
+    _g, w = moment_error(lam, X, u, x_pop)
     return (
         lam,
         w,
@@ -313,7 +314,7 @@ def solve_dual_gd_minibatch(
             updates += 1
 
     runtime = time.perf_counter() - t0
-    g, w = moment_error(lam, X, u, x_pop)
+    _g, w = moment_error(lam, X, u, x_pop)
     return lam, w, {"nit": float(updates), "runtime": float(runtime)}
 
 
@@ -340,7 +341,7 @@ def fmt_sci_tex(m: float, se: float, sig: int = 2) -> str:
     abs_m = abs(m)
     if 1e-3 <= abs_m < 1e3:
         return fmt_mean_se(m, se, digits=3)
-    exp10 = int(math.floor(math.log10(abs_m)))
+    exp10 = math.floor(math.log10(abs_m))
     scale = 10.0**exp10
     mant = m / scale
     mant_se = se / scale
@@ -376,7 +377,8 @@ def write_performance_table(df: pd.DataFrame, out_path: Path) -> None:
     lines.append(r"\begin{tabular}{lcccc}")
     lines.append(r"\toprule")
     lines.append(
-        r"\textbf{Method} & \textbf{$\|g\|_2$} & \textbf{Time (s)} & \textbf{ESS} & \textbf{Iterations} \\"
+        r"\textbf{Method} & \textbf{$\|g\|_2$} & \textbf{Time (s)} & \textbf{ESS} & "
+        r"\textbf{Iterations} \\"
     )
     lines.append(r"\midrule")
 
@@ -397,7 +399,10 @@ def write_performance_table(df: pd.DataFrame, out_path: Path) -> None:
             ess_m, ess_se = mean_se(subm["ess"].values)
             it_m, it_se = mean_se(subm["iterations"].values)
             lines.append(
-                rf"{method} & {fmt_metric(g2_m, g2_se, 'g2')} & {fmt_metric(t_m, t_se, 'time')} & {fmt_metric(ess_m, ess_se, 'ess')} & {fmt_metric(it_m, it_se, 'iter')} \\"
+                rf"{method} & {fmt_metric(g2_m, g2_se, 'g2')} & "
+                rf"{fmt_metric(t_m, t_se, 'time')} & "
+                rf"{fmt_metric(ess_m, ess_se, 'ess')} & "
+                rf"{fmt_metric(it_m, it_se, 'iter')} \\"
             )
         lines.append(r"\midrule")
 
@@ -419,13 +424,15 @@ def write_warmstart_table(df: pd.DataFrame, out_path: Path) -> None:
     lines.append(r"\begin{table}[t]")
     lines.append(r"\centering")
     lines.append(
-        r"\caption{Adapting to revised targets: warm start versus cold start (mean $\pm$ SE over seeds).}"
+        r"\caption{Adapting to revised targets: warm start versus cold start "
+        r"(mean $\pm$ SE over seeds).}"
     )
     lines.append(r"\label{tab:warmstart}")
     lines.append(r"\begin{tabular}{lccc}")
     lines.append(r"\toprule")
     lines.append(
-        r"\textbf{Initialization} & \textbf{$\|g\|_2$} & \textbf{Time (s)} & \textbf{Iterations} \\"
+        r"\textbf{Initialization} & \textbf{$\|g\|_2$} & \textbf{Time (s)} & "
+        r"\textbf{Iterations} \\"
     )
     lines.append(r"\midrule")
 
@@ -437,7 +444,8 @@ def write_warmstart_table(df: pd.DataFrame, out_path: Path) -> None:
         t_m, t_se = mean_se(subm["runtime_seconds"].values)
         it_m, it_se = mean_se(subm["iterations"].values)
         lines.append(
-            rf"{method} & {fmt_metric(g2_m, g2_se, 'g2')} & {fmt_metric(t_m, t_se, 'time')} & {fmt_metric(it_m, it_se, 'iter')} \\"
+            rf"{method} & {fmt_metric(g2_m, g2_se, 'g2')} & "
+            rf"{fmt_metric(t_m, t_se, 'time')} & {fmt_metric(it_m, it_se, 'iter')} \\"
         )
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
@@ -462,7 +470,8 @@ def write_bfgs_evals_table(df: pd.DataFrame, out_path: Path) -> None:
     lines.append(r"\begin{tabular}{lccc}")
     lines.append(r"\toprule")
     lines.append(
-        r"\textbf{Scenario} & \textbf{Iterations} & \textbf{Obj evals (nfev)} & \textbf{Grad evals (njev)} \\"
+        r"\textbf{Scenario} & \textbf{Iterations} & \textbf{Obj evals (nfev)} & "
+        r"\textbf{Grad evals (njev)} \\"
     )
     lines.append(r"\midrule")
 
@@ -474,7 +483,9 @@ def write_bfgs_evals_table(df: pd.DataFrame, out_path: Path) -> None:
         nfev_m, nfev_se = mean_se(subk["nfev"].values)
         njev_m, njev_se = mean_se(subk["njev"].values)
         lines.append(
-            rf"{title} & {fmt_metric(it_m, it_se, 'iter')} & {fmt_metric(nfev_m, nfev_se, 'nfev')} & {fmt_metric(njev_m, njev_se, 'njev')} \\"
+            rf"{title} & {fmt_metric(it_m, it_se, 'iter')} & "
+            rf"{fmt_metric(nfev_m, nfev_se, 'nfev')} & "
+            rf"{fmt_metric(njev_m, njev_se, 'njev')} \\"
         )
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
@@ -605,7 +616,8 @@ def run(args: argparse.Namespace) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.quick:
-        # Smaller and slightly looser settings for fast execution in constrained environments.
+        # Smaller and slightly looser settings, for fast execution in
+        # constrained environments.
         args.large_n = min(args.large_n, 20000)
         args.large_d = min(args.large_d, 20)
         args.large_tol = max(args.large_tol, 1e-6)
@@ -668,7 +680,7 @@ def run(args: argparse.Namespace) -> None:
                 hard_k=sc.get("hard_k", 25),
             )
 
-            lam, w, info = solve_dual_bfgs(
+            _lam, w, info = solve_dual_bfgs(
                 X, u, x_pop, tol=sc["tol"], max_iter=200, method="BFGS", track=False
             )
             g = X.T @ w - x_pop
@@ -691,7 +703,7 @@ def run(args: argparse.Namespace) -> None:
                 )
             )
 
-            lam, w, info = solve_dual_gd_batch(
+            _lam, w, info = solve_dual_gd_batch(
                 X,
                 u,
                 x_pop,
@@ -722,7 +734,7 @@ def run(args: argparse.Namespace) -> None:
             )
 
             if sc["scenario"] == "standard_easy":
-                lam, w, info = solve_dual_gd_minibatch(
+                _lam, w, info = solve_dual_gd_minibatch(
                     X, u, x_pop, eta=0.02, batch_size=50, epochs=10, seed=seed
                 )
                 g = X.T @ w - x_pop
@@ -755,7 +767,7 @@ def run(args: argparse.Namespace) -> None:
         lam1, _, _ = solve_dual_gd_batch(
             X, u, x_pop1, tol=1e-8, max_iter=500, eta=eta, lam0=None, track=False
         )
-        lam_w, w_w, info_w = solve_dual_gd_batch(
+        _lam_w, w_w, info_w = solve_dual_gd_batch(
             X, u, x_pop2, tol=1e-8, max_iter=500, eta=eta, lam0=lam1, track=False
         )
         g = X.T @ w_w - x_pop2
@@ -778,7 +790,7 @@ def run(args: argparse.Namespace) -> None:
             )
         )
 
-        lam_c, w_c, info_c = solve_dual_gd_batch(
+        _lam_c, w_c, info_c = solve_dual_gd_batch(
             X, u, x_pop2, tol=1e-8, max_iter=500, eta=eta, lam0=None, track=False
         )
         g = X.T @ w_c - x_pop2
@@ -941,7 +953,8 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--bfgs_maxiter_large", type=int, default=200)
 
-    # Quick mode: reduces large-scale size and tightness to fit into constrained environments
+    # Quick mode: reduces large-scale size and tightness to fit into
+    # constrained environments
     p.add_argument(
         "--quick",
         action="store_true",

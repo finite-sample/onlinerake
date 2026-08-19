@@ -288,7 +288,8 @@ def _generate_recommendations(
         ) / len(high_lr_results)
         if oscillation_rate > 0.3:
             recommendations.append(
-                f"Warning: {oscillation_rate:.0%} of high learning rate runs showed oscillation. "
+                f"Warning: {oscillation_rate:.0%} of high learning rate runs "
+                "showed oscillation. "
                 "Consider using a lower learning rate or diminishing schedule."
             )
 

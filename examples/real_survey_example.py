@@ -132,7 +132,8 @@ def main():
     print(f"  Converged: {ipf.converged} (iterations: {ipf.n_iterations})")
     print(f"  Final loss: {ipf.loss:.6f}")
     print(
-        f"  ESS: {ipf.effective_sample_size:.1f} ({ipf.effective_sample_size / n_respondents:.1%} efficiency)"
+        f"  ESS: {ipf.effective_sample_size:.1f} "
+        f"({ipf.effective_sample_size / n_respondents:.1%} efficiency)"
     )
     print()
     print("  Weighted margins:")
@@ -164,7 +165,8 @@ def main():
     print(f"  Final loss: {sgd.loss:.6f}")
     print(f"  Final learning rate: {sgd.current_learning_rate:.4f}")
     print(
-        f"  ESS: {sgd.effective_sample_size:.1f} ({sgd.effective_sample_size / n_respondents:.1%} efficiency)"
+        f"  ESS: {sgd.effective_sample_size:.1f} "
+        f"({sgd.effective_sample_size / n_respondents:.1%} efficiency)"
     )
     print()
     print("  Weighted margins:")
@@ -189,7 +191,8 @@ def main():
     print(f"  Converged: {mwu.converged}")
     print(f"  Final loss: {mwu.loss:.6f}")
     print(
-        f"  ESS: {mwu.effective_sample_size:.1f} ({mwu.effective_sample_size / n_respondents:.1%} efficiency)"
+        f"  ESS: {mwu.effective_sample_size:.1f} "
+        f"({mwu.effective_sample_size / n_respondents:.1%} efficiency)"
     )
     print()
     print("  Weighted margins:")
@@ -210,13 +213,16 @@ def main():
     print(f"{'Method':<20} {'Loss':>12} {'ESS':>8} {'Efficiency':>12}")
     print("-" * 52)
     print(
-        f"{'Batch IPF':<20} {ipf.loss:>12.6f} {ipf.effective_sample_size:>8.1f} {ipf.effective_sample_size / n_respondents:>11.1%}"
+        f"{'Batch IPF':<20} {ipf.loss:>12.6f} {ipf.effective_sample_size:>8.1f} "
+        f"{ipf.effective_sample_size / n_respondents:>11.1%}"
     )
     print(
-        f"{'Online SGD':<20} {sgd.loss:>12.6f} {sgd.effective_sample_size:>8.1f} {sgd.effective_sample_size / n_respondents:>11.1%}"
+        f"{'Online SGD':<20} {sgd.loss:>12.6f} {sgd.effective_sample_size:>8.1f} "
+        f"{sgd.effective_sample_size / n_respondents:>11.1%}"
     )
     print(
-        f"{'Online MWU':<20} {mwu.loss:>12.6f} {mwu.effective_sample_size:>8.1f} {mwu.effective_sample_size / n_respondents:>11.1%}"
+        f"{'Online MWU':<20} {mwu.loss:>12.6f} {mwu.effective_sample_size:>8.1f} "
+        f"{mwu.effective_sample_size / n_respondents:>11.1%}"
     )
     print()
 
@@ -234,7 +240,8 @@ def main():
     # by how much relative to the margin's own run-to-run noise.
     estimates = margin_calibration(sgd)
     print(
-        f"{'Feature':<12} {'Target':>8} {'Estimate':>10} {'Gap':>9} {'SE':>8} {'gap/se':>8} {'unclosed':>10}"
+        f"{'Feature':<12} {'Target':>8} {'Estimate':>10} {'Gap':>9} {'SE':>8} "
+        f"{'gap/se':>8} {'unclosed':>10}"
     )
     print("-" * 70)
     for est in estimates:

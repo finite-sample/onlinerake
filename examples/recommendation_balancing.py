@@ -175,7 +175,8 @@ def run_recommendation_example() -> None:
         bias = value - target
         direction = "↑" if bias > 0 else "↓"
         print(
-            f"   {feature}: {value:.1%} (target: {target:.0%}, {direction} {abs(bias):.0%})"
+            f"   {feature}: {value:.1%} (target: {target:.0%}, {direction} "
+            f"{abs(bias):.0%})"
         )
 
     # Raw engagement metrics
@@ -211,7 +212,8 @@ def run_recommendation_example() -> None:
 
     print(f"\n   Final Loss: {sgd_raker.loss:.6f}")
     print(
-        f"   ESS: {sgd_raker.effective_sample_size:.1f} ({sgd_raker.effective_sample_size / 3000:.1%} efficiency)"
+        f"   ESS: {sgd_raker.effective_sample_size:.1f} "
+        f"({sgd_raker.effective_sample_size / 3000:.1%} efficiency)"
     )
 
     # METHOD 2: Online MWU
@@ -241,7 +243,8 @@ def run_recommendation_example() -> None:
 
     print(f"\n   Final Loss: {mwu_raker.loss:.6f}")
     print(
-        f"   ESS: {mwu_raker.effective_sample_size:.1f} ({mwu_raker.effective_sample_size / 3000:.1%} efficiency)"
+        f"   ESS: {mwu_raker.effective_sample_size:.1f} "
+        f"({mwu_raker.effective_sample_size / 3000:.1%} efficiency)"
     )
 
     # METHOD 3: Batch IPF
@@ -255,7 +258,8 @@ def run_recommendation_example() -> None:
     print(f"   Iterations: {ipf.n_iterations}")
     print(f"   Final Loss: {ipf.loss:.6f}")
     print(
-        f"   ESS: {ipf.effective_sample_size:.1f} ({ipf.effective_sample_size / 3000:.1%} efficiency)"
+        f"   ESS: {ipf.effective_sample_size:.1f} "
+        f"({ipf.effective_sample_size / 3000:.1%} efficiency)"
     )
 
     # ENGAGEMENT vs DIVERSITY TRADEOFF
@@ -271,10 +275,14 @@ def run_recommendation_example() -> None:
     print(f"\n{'Metric':<25} {'Raw':>10} {'SGD':>10} {'MWU':>10} {'IPF':>10}")
     print("-" * 65)
     print(
-        f"{'CTR':<25} {raw_engagement['ctr']:>10.2%} {sgd_engagement['ctr']:>10.2%} {mwu_engagement['ctr']:>10.2%} {ipf_engagement['ctr']:>10.2%}"
+        f"{'CTR':<25} {raw_engagement['ctr']:>10.2%} {sgd_engagement['ctr']:>10.2%} "
+        f"{mwu_engagement['ctr']:>10.2%} {ipf_engagement['ctr']:>10.2%}"
     )
     print(
-        f"{'Avg Watch (sec)':<25} {raw_engagement['avg_watch_per_click']:>10.1f} {sgd_engagement['avg_watch_per_click']:>10.1f} {mwu_engagement['avg_watch_per_click']:>10.1f} {ipf_engagement['avg_watch_per_click']:>10.1f}"
+        f"{'Avg Watch (sec)':<25} {raw_engagement['avg_watch_per_click']:>10.1f} "
+        f"{sgd_engagement['avg_watch_per_click']:>10.1f} "
+        f"{mwu_engagement['avg_watch_per_click']:>10.1f} "
+        f"{ipf_engagement['avg_watch_per_click']:>10.1f}"
     )
 
     # Diversity improvement
@@ -286,7 +294,8 @@ def run_recommendation_example() -> None:
         mwu_error = abs(mwu_margins[feature] - targets[feature])
         ipf_error = abs(ipf.margins[feature] - targets[feature])
         print(
-            f"{'  ' + feature + ' error':<25} {raw_error:>10.1%} {sgd_error:>10.1%} {mwu_error:>10.1%} {ipf_error:>10.1%}"
+            f"{'  ' + feature + ' error':<25} {raw_error:>10.1%} {sgd_error:>10.1%} "
+            f"{mwu_error:>10.1%} {ipf_error:>10.1%}"
         )
 
     # Summary statistics

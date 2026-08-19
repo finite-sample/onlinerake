@@ -174,7 +174,8 @@ def simulate_age_error_linear_drift(n_obs: int = 300, n_seeds: int = 5):
         age_errors_base = []
         for demo in data:
             # unweighted margin error
-            # append demo to rakers first, since baseline uses raw margins after updating list
+            # append demo to rakers first, since baseline uses raw margins
+            # after updating list
             raker_sgd.add_observation(demo)
             raker_mwu.add_observation(demo)
             # compute baseline raw age margin (without weighting)

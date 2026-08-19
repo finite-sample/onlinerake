@@ -24,12 +24,10 @@ class LearningRateSchedule(ABC):
     @abstractmethod
     def __call__(self, t: int) -> float:
         """Return learning rate at step t (1-indexed)."""
-        pass
 
     @abstractmethod
     def get_params(self) -> dict[str, Any]:
         """Return schedule parameters for serialization."""
-        pass
 
 
 class ConstantLR(LearningRateSchedule):
@@ -48,10 +46,12 @@ class ConstantLR(LearningRateSchedule):
         self._learning_rate = learning_rate
 
     def __call__(self, t: int = 0) -> float:
+        """Return the learning rate, which does not depend on the step ``t``."""
         _ = t
         return self._learning_rate
 
     def get_params(self) -> dict[str, Any]:
+        """Return the schedule's parameters for serialization."""
         return {"type": "constant", "learning_rate": self._learning_rate}
 
 
@@ -83,10 +83,12 @@ class InverseTimeDecayLR(LearningRateSchedule):
         self._min_lr = min_lr
 
     def __call__(self, t: int) -> float:
+        """Return the learning rate at step ``t``, floored at ``min_lr``."""
         lr = self._initial_lr / (1.0 + self._decay * t)
         return max(lr, self._min_lr)
 
     def get_params(self) -> dict[str, Any]:
+        """Return the schedule's parameters for serialization."""
         return {
             "type": "inverse_time_decay",
             "initial_lr": self._initial_lr,
@@ -128,12 +130,14 @@ class PolynomialDecayLR(LearningRateSchedule):
         self._min_lr = min_lr
 
     def __call__(self, t: int) -> float:
+        """Return the learning rate at step ``t``, floored at ``min_lr``."""
         # Avoid division by zero at t=0
         effective_t = max(t, 1)
         lr = self._initial_lr / (effective_t**self._power)
         return float(max(lr, self._min_lr))
 
     def get_params(self) -> dict[str, Any]:
+        """Return the schedule's parameters for serialization."""
         return {
             "type": "polynomial_decay",
             "initial_lr": self._initial_lr,
@@ -185,6 +189,7 @@ class AdaptiveLR(LearningRateSchedule):
         self._last_loss: float | None = None
 
     def __call__(self, t: int = 0) -> float:
+        """Return the current rate; ``t`` is ignored, ``update`` drives it."""
         _ = t
         return self._current_lr
 
@@ -206,6 +211,7 @@ class AdaptiveLR(LearningRateSchedule):
         self._last_loss = current_loss
 
     def get_params(self) -> dict[str, Any]:
+        """Return the schedule's parameters for serialization."""
         return {
             "type": "adaptive",
             "initial_lr": self._current_lr,

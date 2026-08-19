@@ -1,5 +1,5 @@
 Interactive Notebooks
-====================
+=====================
 
 Get hands-on experience with OnlineRake through our comprehensive Jupyter notebooks!
 

@@ -6,11 +6,12 @@ reduce code duplication and ensure consistent behavior.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .online_raking_sgd import OnlineRakingSGD
 
 

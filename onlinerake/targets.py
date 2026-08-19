@@ -30,20 +30,14 @@ class Targets:
     Args:
         **kwargs: Named feature targets. Each key is a feature name and each
             value specifies the target:
+
             - For binary features: a float in [0, 1] representing the target
               proportion of the population where that feature is 1/True.
             - For continuous features: a tuple ``(value, "mean")`` where value
               is the target mean (any real number).
 
-    Attributes:
-        _targets (dict[str, float]): Internal storage of target values.
-        _feature_types (dict[str, str]): Maps feature names to "binary" or "continuous".
-        _feature_names (list[str]): Sorted list of feature names for consistent ordering.
-
-    Private Methods:
-        _validate_feature_exists: Validates that a feature is defined in targets.
-
     Examples:
+        >>> from onlinerake import Targets
         >>> # Binary features only
         >>> binary = Targets(owns_car=0.4, is_subscriber=0.2, likes_coffee=0.7)
         >>> print(binary.feature_names)
@@ -114,13 +108,15 @@ class Targets:
                 # Binary feature: proportion in [0, 1]
                 if not isinstance(value, (int, float)):
                     raise ValueError(
-                        f"Target for '{name}' must be numeric or (value, 'mean') tuple, "
+                        f"Target for '{name}' must be numeric or a "
+                        "(value, 'mean') tuple, "
                         f"got {type(value).__name__}"
                     )
                 if not 0 <= value <= 1:
                     raise ValueError(
-                        f"Binary target proportion for '{name}' must be between 0 and 1, "
-                        f"got {value}. For continuous features, use (value, 'mean') syntax."
+                        f"Binary target proportion for '{name}' must be "
+                        f"between 0 and 1, got {value}. For continuous "
+                        "features, use the (value, 'mean') syntax."
                     )
                 self._targets[name] = float(value)
                 self._feature_types[name] = "binary"

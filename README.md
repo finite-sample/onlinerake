@@ -174,7 +174,7 @@ Development install:
 ```bash
 git clone https://github.com/finite-sample/onlinerake.git
 cd onlinerake
-pip install -e ".[docs]"
+uv sync --all-groups
 ```
 
 ## Testing

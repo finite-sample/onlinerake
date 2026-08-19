@@ -759,27 +759,25 @@ def check_target_feasibility(
         if is_binary:
             # Binary feature feasibility checks
             # Check if sample has required variation
-            if raw == 0:
-                # No observations with feature=1, can't increase margin
-                if target > margin_tolerance:
-                    problematic.append(feature)
-                    scores[feature] = 0.0
-                    recommendations.append(
-                        f"'{feature}': No observations with value=1, "
-                        f"cannot achieve target {target:.2%}."
-                    )
-                    continue
+            # No observations with feature=1, can't increase margin
+            if raw == 0 and target > margin_tolerance:
+                problematic.append(feature)
+                scores[feature] = 0.0
+                recommendations.append(
+                    f"'{feature}': No observations with value=1, "
+                    f"cannot achieve target {target:.2%}."
+                )
+                continue
 
-            if raw == 1:
-                # All observations have feature=1, can't decrease margin
-                if target < 1 - margin_tolerance:
-                    problematic.append(feature)
-                    scores[feature] = 0.0
-                    recommendations.append(
-                        f"'{feature}': All observations have value=1, "
-                        f"cannot achieve target {target:.2%}."
-                    )
-                    continue
+            # All observations have feature=1, can't decrease margin
+            if raw == 1 and target < 1 - margin_tolerance:
+                problematic.append(feature)
+                scores[feature] = 0.0
+                recommendations.append(
+                    f"'{feature}': All observations have value=1, "
+                    f"cannot achieve target {target:.2%}."
+                )
+                continue
         else:
             # Continuous feature feasibility checks
             # Check if target is within sample range
@@ -819,12 +817,14 @@ def check_target_feasibility(
                 if is_binary:
                     recommendations.append(
                         f"'{feature}': Weighted margin ({weighted:.2%}) not converging "
-                        f"toward target ({target:.2%}). Consider adjusting learning rate."
+                        f"toward target ({target:.2%}). Consider adjusting the "
+                        "learning rate."
                     )
                 else:
                     recommendations.append(
                         f"'{feature}': Weighted mean ({weighted:.2f}) not converging "
-                        f"toward target ({target:.2f}). Consider adjusting learning rate."
+                        f"toward target ({target:.2f}). Consider adjusting the "
+                        "learning rate."
                     )
         else:
             # Already close to target
@@ -840,7 +840,8 @@ def check_target_feasibility(
                 problematic.append(feature)
                 scores[feature] = min(scores.get(feature, 1.0), MIN_FEASIBILITY_SCORE)
             extreme_warning = (
-                f"Weights hitting bounds (min={raker.min_weight}, max={raker.max_weight}). "
+                f"Weights hitting bounds (min={raker.min_weight}, "
+                f"max={raker.max_weight}). "
                 "This may indicate target feasibility strain."
             )
             if extreme_warning not in recommendations:
@@ -1048,15 +1049,9 @@ def analyze_infeasibility(
             # Compute achievable bounds
             # Lower bound: give all weight to observations without feature
             # Upper bound: give all weight to observations with feature
-            if n_without_feature == 0:
-                min_achievable = 1.0
-            else:
-                min_achievable = 0.0
+            min_achievable = 1.0 if n_without_feature == 0 else 0.0
 
-            if n_with_feature == 0:
-                max_achievable = 0.0
-            else:
-                max_achievable = 1.0
+            max_achievable = 0.0 if n_with_feature == 0 else 1.0
 
             achievable_bounds[feature] = (min_achievable, max_achievable)
 
@@ -1084,7 +1079,8 @@ def analyze_infeasibility(
 
                 if weight_ratio_needed > EXTREME_WEIGHT_RATIO:
                     diagnosis.append(
-                        f"'{feature}': Achieving target {target:.1%} from raw {raw:.1%} "
+                        f"'{feature}': Achieving target {target:.1%} from raw "
+                        f"{raw:.1%} "
                         f"requires ~{weight_ratio_needed:.0f}:1 weight ratio."
                     )
                     infeasibility_types.append("numerical")
@@ -1177,8 +1173,7 @@ def _estimate_required_weight_ratio(
     # If w_1 < 1, ratio is 1:1/w_1
     if w_1 > 1:
         return w_1
-    else:
-        return 1.0 / w_1 if w_1 > 0 else float("inf")
+    return 1.0 / w_1 if w_1 > 0 else float("inf")
 
 
 def _compute_achievable_with_ratio(
@@ -1200,11 +1195,10 @@ def _compute_achievable_with_ratio(
         w_1 = max_ratio
         achievable = (n_with * w_1) / (n_with * w_1 + n_without)
         return min(target, achievable)
-    else:
-        # Need to decrease: max weight on feature=0
-        w_0 = max_ratio
-        achievable = n_with / (n_with + n_without * w_0)
-        return max(target, achievable)
+    # Need to decrease: max weight on feature=0
+    w_0 = max_ratio
+    achievable = n_with / (n_with + n_without * w_0)
+    return max(target, achievable)
 
 
 def suggest_feasible_targets(
@@ -1441,7 +1435,8 @@ def optimal_mwu_learning_rate(n_observations: int, n_features: int) -> float:
         The bound goes as ``1/sqrt(T)``, so a longer stream warrants a smaller
         step -- ten times the observations, roughly a third the rate:
 
-        >>> print(f"{optimal_mwu_learning_rate(n_observations=10000, n_features=4):.3f}")
+        >>> rate = optimal_mwu_learning_rate(n_observations=10000, n_features=4)
+        >>> print(f"{rate:.3f}")
         0.086
 
     Note:

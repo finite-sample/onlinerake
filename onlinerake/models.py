@@ -11,13 +11,10 @@ standard GREG/MRP workflows with online weight adjustment.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
-
-if TYPE_CHECKING:
-    pass
 
 
 @runtime_checkable
@@ -149,9 +146,7 @@ class LinearOutcomeModel:
         if single_sample:
             X_arr = X_arr.reshape(1, -1)
 
-        predictions = X_arr @ self.coef_ + self.intercept_
-
-        return predictions
+        return X_arr @ self.coef_ + self.intercept_
 
 
 class LogisticOutcomeModel:
@@ -281,9 +276,7 @@ class LogisticOutcomeModel:
             X_arr = X_arr.reshape(1, -1)
 
         z = X_arr @ self.coef_ + self.intercept_
-        predictions = self._sigmoid(z)
-
-        return predictions
+        return self._sigmoid(z)
 
 
 class ExternalModelWrapper:

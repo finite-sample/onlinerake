@@ -16,27 +16,3 @@ Core Classes
    Targets
    OnlineRakingSGD
    OnlineRakingMWU
-
-Targets
--------
-
-.. autoclass:: Targets
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-OnlineRakingSGD
----------------
-
-.. autoclass:: OnlineRakingSGD
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-OnlineRakingMWU
----------------
-
-.. autoclass:: OnlineRakingMWU
-   :members:
-   :undoc-members:
-   :show-inheritance:

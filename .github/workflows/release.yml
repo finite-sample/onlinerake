@@ -1,23 +1,8 @@
 name: Release
 
-# py-canon's reusable-release, as calibre/simcheck/covered/preen use. This
-# replaces a bespoke `python-publish.yml` that fired only on
-# `release: published`, so `git tag && git push --tags` started nothing at all
-# -- no workflow, no failure, a tag that merely looked released.
-#
-# **The PyPI trusted publisher for this project must be updated to name
-# `release.yml`.** It is currently bound to `python-publish.yml`, and OIDC
-# claims reference the workflow path, so publishing fails until that is
-# changed on PyPI.
-#
-# Tests are not re-run here, by design: the canon pattern relies on CI having
-# already run against the commit the tag points at. Cutting a tag from a commit
-# CI never saw would publish untested code, which is what release gate 1
-# ("be on a branch CI actually runs on") exists to prevent.
-
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       publish:
@@ -52,9 +37,8 @@ jobs:
   # here rather than in py-canon's reusable-release.
   publish:
     needs: release
-    # The version is derived from the tag, so anything built off a branch is a dev
-    # version (1.0.post3.dev0+abc1234). A PyPI upload cannot be withdrawn, so never
-    # publish a non-tag build, and make a manual run opt in explicitly.
+    # A PyPI upload cannot be withdrawn, so publish only from a tag. The reusable
+    # build rejects the tag unless it matches the version in pyproject.toml.
     if: >-
       startsWith(github.ref, 'refs/tags/') &&
       (github.event_name == 'push' || inputs.publish)
@@ -72,16 +56,13 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           attestations: true
-          # Codex's review on this PR: the concurrency group serialises a manual
-          # dispatch and a tag push aimed at one version, it does not
-          # deduplicate them, and cancel-in-progress is false -- so the queued
-          # run starts afterwards and uploads identical files. A completed run
-          # is not covered by concurrency at all, so a rerun does the same. PyPI
+          # The `if:` above decides *which builds may publish*. This decides what
+          # happens when one version is published twice, which that guard cannot
+          # see. The concurrency group serialises a manual dispatch and a tag
+          # push aimed at the same version, it does not deduplicate them, and
+          # cancel-in-progress is false -- so the queued run starts once the
+          # first finishes and uploads identical files. A completed run is not
+          # covered by concurrency at all, so a plain rerun does the same. PyPI
           # answers with a 400 and the release goes red having already
-          # succeeded. The `if:` above cannot cover this: it decides which
-          # builds may publish, not what happens when one publishes twice.
-          #
-          # Also fixed in py-canon's template (gojiplus/py-canon#20) so newly
-          # generated repos get it, but the publish job lives here rather than
-          # in the reusable workflow, so this file needs it in its own right.
+          # succeeded, which is the worst of both readings.
           skip-existing: true

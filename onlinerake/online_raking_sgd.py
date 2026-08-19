@@ -23,10 +23,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from .targets import Targets
-
 if TYPE_CHECKING:
     from .learning_rate import LearningRateSchedule
+    from .targets import Targets
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class OnlineRakingSGD:
@@ -68,6 +69,7 @@ class OnlineRakingSGD:
         history: List of historical states after each update.
 
     Examples:
+        >>> from onlinerake import OnlineRakingSGD, Targets
         >>> targets = Targets(owns_car=0.4, is_subscriber=0.2)
         >>> raker = OnlineRakingSGD(targets, learning_rate=5.0)
 
@@ -95,7 +97,8 @@ class OnlineRakingSGD:
 
     Raises:
         ValueError: If any parameter is invalid (negative learning rate, invalid
-            weight bounds, non-positive convergence window, invalid compute_weight_stats).
+            weight bounds, non-positive convergence window, invalid
+            compute_weight_stats).
 
     Note:
         The algorithm supports arbitrary binary features, not limited to
@@ -141,13 +144,14 @@ class OnlineRakingSGD:
             raise ValueError(
                 "compute_weight_stats must be True, False, or a positive integer"
             )
-        if isinstance(compute_weight_stats, int) and not isinstance(
-            compute_weight_stats, bool
+        if (
+            isinstance(compute_weight_stats, int)
+            and not isinstance(compute_weight_stats, bool)
+            and compute_weight_stats < 1
         ):
-            if compute_weight_stats < 1:
-                raise ValueError(
-                    "compute_weight_stats must be True, False, or a positive integer"
-                )
+            raise ValueError(
+                "compute_weight_stats must be True, False, or a positive integer"
+            )
 
         self.targets = targets
         self.learning_rate = self._base_learning_rate
@@ -268,11 +272,10 @@ class OnlineRakingSGD:
 
         # Efficient vectorized computation
         weighted_sums = w @ self._features[: self._n_obs]
-        margins = {
+        return {
             name: float(weighted_sums[i] / total_w)
             for i, name in enumerate(self._feature_names)
         }
-        return margins
 
     @property
     def raw_margins(self) -> dict[str, float]:
@@ -294,10 +297,9 @@ class OnlineRakingSGD:
 
         # Mean of each feature column
         feature_means = self._features[: self._n_obs].mean(axis=0)
-        raw = {
+        return {
             name: float(feature_means[i]) for i, name in enumerate(self._feature_names)
         }
-        return raw
 
     @property
     def loss(self) -> float:
@@ -445,12 +447,13 @@ class OnlineRakingSGD:
         if isinstance(self.compute_weight_stats, bool):
             if not self.compute_weight_stats and self._cached_weight_stats is not None:
                 return self._cached_weight_stats
-        elif isinstance(self.compute_weight_stats, int):
-            if (
-                self._n_obs - self._weight_stats_computed_at
-            ) < self.compute_weight_stats:
-                if self._cached_weight_stats is not None:
-                    return self._cached_weight_stats
+        elif (
+            isinstance(self.compute_weight_stats, int)
+            and (self._n_obs - self._weight_stats_computed_at)
+            < self.compute_weight_stats
+            and self._cached_weight_stats is not None
+        ):
+            return self._cached_weight_stats
 
         w = self._weights[: self._n_obs]
         q25, median, q75 = np.percentile(w, [25, 50, 75])
@@ -531,8 +534,9 @@ class OnlineRakingSGD:
                 self._converged = True
                 self._convergence_step = self._n_obs
                 if self.verbose:
-                    logging.info(
-                        f"Convergence detected at observation {self._n_obs} (loss ≈ 0)"
+                    _LOGGER.info(
+                        "Convergence detected at observation %d (loss ~ 0)",
+                        self._n_obs,
                     )
             return True
 
@@ -546,8 +550,8 @@ class OnlineRakingSGD:
                     self._converged = True
                     self._convergence_step = self._n_obs
                     if self.verbose:
-                        logging.info(
-                            f"Convergence detected at observation {self._n_obs}"
+                        _LOGGER.info(
+                            "Convergence detected at observation %d", self._n_obs
                         )
                 return True
 
@@ -732,10 +736,7 @@ class OnlineRakingSGD:
         """
         feature_values = np.zeros(self._n_features, dtype=np.float64)
         for i, name in enumerate(self._feature_names):
-            if isinstance(obs, dict):
-                val = obs.get(name, 0)
-            else:
-                val = getattr(obs, name, 0)
+            val = obs.get(name, 0) if isinstance(obs, dict) else getattr(obs, name, 0)
 
             if self.targets.is_binary(name):
                 feature_values[i] = 1.0 if val else 0.0
@@ -752,9 +753,13 @@ class OnlineRakingSGD:
             gradient_norm: Current gradient norm to log.
         """
         if self.verbose and self._n_obs % 100 == 0:
-            logging.info(
-                f"{prefix} {self._n_obs}: loss={self.loss:.6f}, "
-                f"grad_norm={gradient_norm:.6f}, ess={self.effective_sample_size:.1f}"
+            _LOGGER.info(
+                "%s %d: loss=%.6f, grad_norm=%.6f, ess=%.1f",
+                prefix,
+                self._n_obs,
+                self.loss,
+                gradient_norm,
+                self.effective_sample_size,
             )
 
     def partial_fit(self, obs: dict[str, Any] | Any) -> None:

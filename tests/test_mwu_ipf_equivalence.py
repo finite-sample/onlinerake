@@ -74,7 +74,8 @@ class TestDivergenceFunctions:
         kl_sd = kl_divergence_weights(w_sparse, w_dense)
         kl_ds = kl_divergence_weights(w_dense, w_sparse)
         # Both should be positive
-        assert kl_sd > 0 and kl_ds > 0
+        assert kl_sd > 0
+        assert kl_ds > 0
         # They should be different (asymmetric property)
         # D_KL(sparse || uniform) is small (sparse is "surprised" by uniform)
         # D_KL(uniform || sparse) is larger (uniform is very "surprised" by sparse)
@@ -178,7 +179,8 @@ class TestMWUMatchesIPF:
             mwu_margin = mwu.margins[name]
             ipf_margin = ipf.margins[name]
             assert mwu_margin == pytest.approx(ipf_margin, abs=0.1), (
-                f"Margin mismatch for {name}: MWU={mwu_margin:.4f}, IPF={ipf_margin:.4f}"
+                f"Margin mismatch for {name}: MWU={mwu_margin:.4f}, "
+                f"IPF={ipf_margin:.4f}"
             )
 
     def test_smaller_lr_closer_to_ipf(self):

@@ -52,24 +52,22 @@ Both raking classes follow scikit-learn's `partial_fit` pattern: call `.partial_
 ## Development Commands
 
 ```bash
-# Install package in editable mode
-pip install -e .
+# Install the package and every dependency group
+uv sync --all-groups
 
-# Install development dependencies
-pip install pytest black flake8 sphinx sphinx-rtd-theme myst-parser
-
-# Run comprehensive test suite (105 tests across 3 test files)
-pytest tests/ -v --cov=onlinerake --cov-report=term
+# Run the test suite with coverage
+uv run pytest --cov --cov-report=term
 
 # Run interactive tutorials
 jupyter notebook docs/notebooks/
 
-# Code quality checks (zero tolerance for critical issues)
-flake8 onlinerake --count --select=E9,F63,F7,F82 --show-source --statistics
-black --check onlinerake
+# Code quality checks (zero tolerance)
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
 
-# Build documentation (includes new diagnostics and performance sections)
-cd docs && make html
+# Build documentation (executes the notebooks; warnings are errors)
+uv run sphinx-build -W -b html docs _site
 
 # Run comprehensive head-to-head evaluation (quick mode)
 uv run python scripts/eval/comprehensive_eval.py --n_seeds 5 --quick
@@ -83,9 +81,9 @@ uv run python scripts/eval/plot_eval_results.py
 
 ## Testing
 
-- **Comprehensive test suite**: 105 test cases covering core algorithms, new features, and theoretical foundations
+- **Comprehensive test suite**: 390 test cases covering core algorithms, new features, and theoretical foundations
 - **Realistic examples**: Gender bias correction, real-time polling, algorithm comparison
-- **CI/CD workflows**: Automated testing on Python 3.10-3.13, code quality checks
+- **CI/CD workflows**: py-canon's shared CI, on Python 3.12 and 3.14
 - **Coverage**: High test coverage for critical paths, edge cases, and extreme scenarios
 - **Performance tests**: Verify linear scaling and optimization effectiveness
 - **Numerical stability**: Tests for extreme learning rates (1e6), near-zero loss convergence
@@ -98,4 +96,4 @@ uv run python scripts/eval/plot_eval_results.py
 - **Data structures**: Pre-allocated arrays, configurable weight statistics computation
 - **API**: Scikit-learn compatible `partial_fit` pattern with comprehensive diagnostics
 - **Dependencies**: Minimal - only numpy and pandas required
-- **Compatibility**: Python 3.10+ with modern type hints
+- **Compatibility**: Python 3.12+ with modern type hints

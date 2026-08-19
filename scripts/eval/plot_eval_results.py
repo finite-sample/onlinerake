@@ -6,7 +6,8 @@ publication-quality visualizations.
 
 Usage:
     python scripts/plot_eval_results.py
-    python scripts/plot_eval_results.py --input_dir ./eval_outputs --output_dir ./eval_plots
+    python scripts/plot_eval_results.py \
+        --input_dir ./eval_outputs --output_dir ./eval_plots
 
 Outputs:
     - fig_convergence_curves.pdf     - Loss vs observations for each algorithm
@@ -158,7 +159,7 @@ def plot_efficiency_accuracy_tradeoff(
         print("matplotlib not available, skipping plot")
         return
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    _fig, ax = plt.subplots(figsize=(8, 6))
 
     algo_colors = {
         "batch_ipf": "tab:blue",
@@ -284,7 +285,7 @@ def plot_robustness_comparison(
         print("matplotlib not available, skipping plot")
         return
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    _fig, axes = plt.subplots(1, 2, figsize=(10, 4))
 
     challenging_scenarios = ["hard_targets", "infeasible", "drift"]
     algorithms = ["batch_ipf", "sgd_fixed", "sgd_rm", "mwu"]
@@ -363,11 +364,13 @@ def generate_latex_table(
     lines = [
         r"\begin{table}[t]",
         r"\centering",
-        rf"\caption{{Comparison of raking algorithms (mean $\pm$ SE over {n_seeds} seeds).}}",
+        rf"\caption{{Comparison of raking algorithms (mean $\pm$ SE over {n_seeds} "
+        rf"seeds).}}",
         r"\label{tab:main_results}",
         r"\begin{tabular}{llcccc}",
         r"\toprule",
-        r"\textbf{Scenario} & \textbf{Algorithm} & \textbf{Loss} & \textbf{ESS} & \textbf{Efficiency} & \textbf{Runtime (s)} \\",
+        r"\textbf{Scenario} & \textbf{Algorithm} & \textbf{Loss} & \textbf{ESS} & "
+        r"\textbf{Efficiency} & \textbf{Runtime (s)} \\",
         r"\midrule",
     ]
 
@@ -469,7 +472,7 @@ def main() -> None:
     if metadata_file.exists():
         import json
 
-        with open(metadata_file) as f:
+        with Path(metadata_file).open() as f:
             metadata = json.load(f)
             n_seeds = metadata.get("n_seeds", 50)
 

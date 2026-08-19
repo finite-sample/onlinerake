@@ -375,7 +375,7 @@ class TestPoststratificationCells:
 
     def test_invalid_proportions_raise(self):
         """Test that cell proportions must sum to 1."""
-        with pytest.raises(ValueError, match="must sum to 1.0"):
+        with pytest.raises(ValueError, match=r"must sum to 1\.0"):
             PoststratificationCells(
                 [
                     PoststratificationCell("a", {"x": 1}, 0.3),
@@ -811,4 +811,5 @@ class TestArgumentValidationDoesNotDependOnSampleSize:
         from onlinerake.model_assisted import model_assisted_confidence_interval
 
         low, high = model_assisted_confidence_interval(self._raker(1))
-        assert np.isnan(low) and np.isnan(high)
+        assert np.isnan(low)
+        assert np.isnan(high)

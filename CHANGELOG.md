@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Development tooling moved to the py-canon shared standard: one `CI` workflow
+  (lint, matrix tests with a 89% coverage floor, wheel install, workflow
+  security, dependency review), shared docs and release workflows, ruff in
+  place of mypy, and `docs/conf.py` reduced to the fleet's Sphinx config plus
+  this package's notebook support.
+- Docs now execute the three example notebooks during the Sphinx build, with
+  warnings treated as errors, so a broken example fails CI.
+
+### Fixed
+- `OnlineRakingMWU.partial_fit` had a numpy-style docstring in a Google-style
+  package; its argument is now documented where the tooling looks for it.
+- `docs/quickstart.rst` linked to two pages that do not exist.
+
 ## [2.0.0] - 2026-08-09
 
 A major version because public API is removed. Two features that put confidence

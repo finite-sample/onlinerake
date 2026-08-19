@@ -291,10 +291,12 @@ def run_ab_test_example() -> None:
     print(f"\n{'Metric':<30} {'Raw':>12} {'Weighted':>12} {'True':>12}")
     print("-" * 66)
     print(
-        f"{'Treatment Effect':<30} {raw_effect['absolute_effect']:>12.2%} {weighted_effect['absolute_effect']:>12.2%} {TRUE_EFFECT:>12.1%}"
+        f"{'Treatment Effect':<30} {raw_effect['absolute_effect']:>12.2%} "
+        f"{weighted_effect['absolute_effect']:>12.2%} {TRUE_EFFECT:>12.1%}"
     )
     print(
-        f"{'Bias from True Effect':<30} {raw_bias:>12.2%} {weighted_bias:>12.2%} {'-':>12}"
+        f"{'Bias from True Effect':<30} {raw_bias:>12.2%} {weighted_bias:>12.2%} "
+        f"{'-':>12}"
     )
     print(f"\n   Bias reduction: {improvement:.0f}%")
 
@@ -308,7 +310,8 @@ def run_ab_test_example() -> None:
     print(f"   Design Effect: {deff:.2f}")
     print(f"   Weight Efficiency: {raker.effective_sample_size / len(treatment):.1%}")
     print(
-        f"   Effective Sample Size: {raker.effective_sample_size:.1f} (of {len(treatment)})"
+        f"   Effective Sample Size: {raker.effective_sample_size:.1f} (of "
+        f"{len(treatment)})"
     )
 
     weight_stats = raker.weight_distribution_stats

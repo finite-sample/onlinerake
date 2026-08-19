@@ -4,8 +4,8 @@ This module implements a streaming survey calibration algorithm based on
 the multiplicative weights update (MWU) rule.  Instead of subtracting a
 scaled gradient like stochastic gradient descent, the algorithm
 multiplies each weight by an exponential of its gradient.  This
-corresponds to a mirror descent step on the Kullback–Leibler
-divergence, which is the natural Bregman divergence for non‑negative
+corresponds to a mirror descent step on the Kullback-Leibler
+divergence, which is the natural Bregman divergence for non-negative
 weights.
 
 The resulting updates maintain positivity by construction and tend to
@@ -14,7 +14,7 @@ weights.  However, overly aggressive learning rates can lead to weight
 explosions or collapses.  Use the optional weight clipping to keep
 weights within reasonable bounds.
 
-The class is a drop‑in replacement for
+The class is a drop-in replacement for
 :class:`~onlinerake.online_raking_sgd.OnlineRakingSGD`; it shares
 nearly the same API and internal metrics.  See the base class for
 attribute definitions and usage examples.
@@ -99,19 +99,11 @@ class OnlineRakingMWU(OnlineRakingSGD):
     def partial_fit(self, obs: dict[str, Any] | Any) -> None:
         """Consume a single observation and update weights multiplicatively.
 
-        Parameters
-        ----------
-        obs : dict or object
-            An observation containing feature values. For dict input,
-            keys should match feature names in targets. For object input,
-            features are accessed as attributes. For binary features,
-            values should be 0/1 or False/True. For continuous features,
-            values should be numeric (float/int).
-
-        Returns
-        -------
-        None
-            The internal state is updated in place.
+        Args:
+            obs: An observation carrying feature values. A dict's keys must
+                match the feature names in the targets; any other object has
+                its features read as attributes. Binary features take 0/1 or
+                False/True, continuous features any number.
         """
         # Ensure we have capacity
         self._expand_capacity()
