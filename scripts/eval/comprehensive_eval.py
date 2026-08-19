@@ -523,7 +523,8 @@ def print_summary_table(summary: pd.DataFrame) -> None:
 
         print(f"\n--- {scenario.upper()} ---")
         print(
-            f"{'Algorithm':<20} {'Loss (mean)':<12} {'ESS (mean)':<12} {'Efficiency':<12} {'Runtime (s)':<12}"
+            f"{'Algorithm':<20} {'Loss (mean)':<12} {'ESS (mean)':<12} "
+            f"{'Efficiency':<12} {'Runtime (s)':<12}"
         )
         print("-" * 68)
 

@@ -1,0 +1,12 @@
+# Managed by copier — records template version for `copier update`. Do not edit.
+_commit: v1.1.1
+_src_path: gh:gojiplus/py-canon
+author_email: gsood07@gmail.com
+author_name: Gaurav Sood
+coverage_floor: 89
+default_branch: main
+description: Streaming survey raking via SGD and MWU
+needs_cli: false
+org: finite-sample
+package_name: onlinerake
+project_name: onlinerake

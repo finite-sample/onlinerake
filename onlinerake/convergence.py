@@ -136,15 +136,14 @@ def verify_robbins_monro(
     if schedule_type == "constant":
         return _verify_constant(params["learning_rate"], n_steps, notes)
 
-    elif schedule_type == "polynomial_decay":
+    if schedule_type == "polynomial_decay":
         return _verify_polynomial(params, n_steps, notes)
 
-    elif schedule_type == "inverse_time_decay":
+    if schedule_type == "inverse_time_decay":
         return _verify_inverse_time(params, n_steps, notes)
 
-    else:
-        # Unknown schedule: numerical estimation with disclaimer
-        return _verify_numerical_fallback(schedule, n_steps, notes)
+    # Unknown schedule: numerical estimation with disclaimer
+    return _verify_numerical_fallback(schedule, n_steps, notes)
 
 
 def _verify_constant(
@@ -458,7 +457,8 @@ def analyze_convergence(
         and raker.learning_rate > 1.0 / lipschitz
     ):
         warnings.append(
-            f"Learning rate {raker.learning_rate:.4f} exceeds 1/L = {1.0 / lipschitz:.4f}. "
+            f"Learning rate {raker.learning_rate:.4f} exceeds "
+            f"1/L = {1.0 / lipschitz:.4f}. "
             "This may cause oscillation or divergence."
         )
 
@@ -576,10 +576,11 @@ def theoretical_convergence_bound(
             "notes": [
                 f"Polynomial decay η_t = {initial_lr}/t^{power}",
                 f"Convergence rate: O(1/T^{effective_power:.2f})",
-                f"After {n_observations} observations, expected excess loss ≤ {expected_loss_bound:.6f}",
+                f"After {n_observations} observations, expected excess loss "
+                f"≤ {expected_loss_bound:.6f}",
             ],
         }
-    elif learning_rate_schedule == "constant":
+    if learning_rate_schedule == "constant":
         # Constant learning rate gives bounded suboptimality
         # E[L(w_T)] - L(w*) ≤ O(η) for small enough η
         suboptimality_bound = initial_lr * n_features * SUBOPTIMALITY_FACTOR
@@ -598,8 +599,7 @@ def theoretical_convergence_bound(
                 "For exact convergence, use diminishing learning rates",
             ],
         }
-    else:
-        raise ValueError(f"Unknown schedule type: {learning_rate_schedule}")
+    raise ValueError(f"Unknown schedule type: {learning_rate_schedule}")
 
 
 def mwu_convergence_analysis(
@@ -645,7 +645,8 @@ def mwu_convergence_analysis(
             "Maintains non-negativity of weights by construction",
             "Connection to classical IPF: MWU → IPF as η → 0",
             f"Regret after {n_observations} obs: ≤ {regret_bound:.4f}",
-            f"Optimal η for this T: {np.sqrt(2 * np.log(n_features) / n_observations):.4f}",
+            "Optimal η for this T: "
+            f"{np.sqrt(2 * np.log(n_features) / n_observations):.4f}",
         ],
     }
 
@@ -698,7 +699,8 @@ def verify_convergence_conditions(
         }
         results["overall_status"] = "WARN"
         results["recommendations"].append(
-            "Constant learning rate provides bounded suboptimality, not exact convergence. "
+            "Constant learning rate provides bounded suboptimality, not exact "
+            "convergence. "
             "Use robbins_monro_schedule() for guaranteed convergence."
         )
 
@@ -718,8 +720,9 @@ def verify_convergence_conditions(
 
             if current_lr > max_safe_lr:
                 results["recommendations"].append(
-                    f"Learning rate {current_lr:.4f} exceeds safe bound {max_safe_lr:.4f}. "
-                    "This may cause oscillation. Consider reducing initial learning rate."
+                    f"Learning rate {current_lr:.4f} exceeds safe bound "
+                    f"{max_safe_lr:.4f}. This may cause oscillation. "
+                    "Consider reducing initial learning rate."
                 )
         else:
             results["checks"]["lipschitz"] = {
@@ -784,7 +787,8 @@ def verify_convergence_conditions(
         if oscillating:
             results["overall_status"] = "FAIL"
             results["recommendations"].append(
-                "Oscillation detected in loss. Reduce learning rate or use a diminishing schedule."
+                "Oscillation detected in loss. Reduce learning rate or use a "
+                "diminishing schedule."
             )
 
     return results

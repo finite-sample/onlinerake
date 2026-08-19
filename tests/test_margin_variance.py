@@ -170,11 +170,13 @@ class TestDegenerateSamples:
 
         assert np.isnan(model_assisted_variance(raker))
         low, high = model_assisted_confidence_interval(raker)
-        assert np.isnan(low) and np.isnan(high), (
+        message = (
             f"one observation produced the interval ({low}, {high}); a "
             "zero-width 95% interval claims perfect precision from a single "
             "draw"
         )
+        assert np.isnan(low), message
+        assert np.isnan(high), message
 
 
 class TestArgumentsAreChecked:
@@ -319,11 +321,11 @@ class TestTheDiagnosticsMoveOnTheRightAxes:
             if rng.random() < (0.75 if obs["college"] else 0.35):
                 raker.partial_fit(obs)
                 accepted += 1
-        return [
+        return next(
             c
             for c in margin_calibration(raker, n_replicates=5)
             if c.feature == "college"
-        ][0]
+        )
 
     def test_both_diagnostics_fall_as_calibration_effort_rises(self):
         """Axis 1: more effort closes more of the gap, on either measure."""

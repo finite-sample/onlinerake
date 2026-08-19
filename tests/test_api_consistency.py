@@ -18,6 +18,7 @@ call with the pair reversed raised nothing and returned a plausible number:
 from __future__ import annotations
 
 import inspect
+from typing import ClassVar
 
 import pytest
 
@@ -37,7 +38,7 @@ def _params(func):
 class TestOneNamePerConcept:
     """The same quantity is spelled the same way everywhere."""
 
-    @pytest.mark.parametrize("name,func", PUBLIC_FUNCTIONS)
+    @pytest.mark.parametrize(("name", "func"), PUBLIC_FUNCTIONS)
     def test_observation_counts_are_called_n_observations(self, name, func):
         """``n_obs`` and ``n_observations`` both meant the count of rows."""
         assert "n_obs" not in _params(func), (
@@ -45,13 +46,13 @@ class TestOneNamePerConcept:
             "package uses 'n_observations'"
         )
 
-    @pytest.mark.parametrize("name,func", PUBLIC_FUNCTIONS)
+    @pytest.mark.parametrize(("name", "func"), PUBLIC_FUNCTIONS)
     def test_no_single_letter_parameters(self, name, func):
         """``verify_robbins_monro`` took ``T``, alone in the package."""
         short = [p for p in _params(func) if len(p) == 1]
         assert not short, f"{name} has single-letter parameter(s) {short}"
 
-    @pytest.mark.parametrize("name,func", PUBLIC_FUNCTIONS)
+    @pytest.mark.parametrize(("name", "func"), PUBLIC_FUNCTIONS)
     def test_tolerance_says_what_it_is_a_tolerance_on(self, name, func):
         """A bare ``tolerance`` meant a squared-error loss in one function and a
         margin distance in another -- 1e-6 against 0.05, four orders apart under
@@ -66,7 +67,7 @@ class TestOneNamePerConcept:
 class TestOneOrderPerPair:
     """Interchangeable-looking arguments appear in one order everywhere."""
 
-    @pytest.mark.parametrize("name,func", PUBLIC_FUNCTIONS)
+    @pytest.mark.parametrize(("name", "func"), PUBLIC_FUNCTIONS)
     def test_observations_precede_features(self, name, func):
         """Both are ints, so the wrong order is silent rather than a TypeError.
 
@@ -81,7 +82,7 @@ class TestOneOrderPerPair:
                 "function in the package takes the observation count first"
             )
 
-    @pytest.mark.parametrize("name,func", PUBLIC_FUNCTIONS)
+    @pytest.mark.parametrize(("name", "func"), PUBLIC_FUNCTIONS)
     def test_the_raker_is_always_first(self, name, func):
         """Nineteen functions take a fitted raker. It leads in all of them."""
         params = _params(func)
@@ -92,7 +93,7 @@ class TestOneOrderPerPair:
 class TestTheSchemesAgree:
     """The six replication entry points share one vocabulary."""
 
-    REPLICATION = [
+    REPLICATION: ClassVar[list[str]] = [
         "estimate_margin_variance",
         "estimate_margin_std_error",
         "margin_calibration",

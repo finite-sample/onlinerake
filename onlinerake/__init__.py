@@ -1,4 +1,6 @@
-"""Streaming survey weight calibration via stochastic gradient descent and multiplicative weights update.
+"""Streaming survey weight calibration.
+
+Uses stochastic gradient descent and multiplicative weights update.
 
 This package provides two high-performance streaming weight calibration algorithms
 for adjusting observation weights to match known population margins in real time:
@@ -148,7 +150,9 @@ from .streaming_inference import (
 )
 from .targets import Targets
 
-__all__ = [
+# Grouped by subsystem rather than sorted: the headings are what make a
+# 60-name export list readable, and alphabetical order would scatter them.
+__all__ = [  # noqa: RUF022
     # Core algorithms
     "Targets",
     "OnlineRakingSGD",

@@ -1,4 +1,4 @@
-"""Tests for new theoretical features: convergence analysis, streaming inference, infeasibility handling."""
+"""Convergence analysis, streaming inference and infeasibility handling."""
 
 import numpy as np
 import pytest
@@ -485,7 +485,8 @@ class TestIntegrationConvergenceAndInfeasibility:
         raker = OnlineRakingSGD(targets, learning_rate=schedule)
 
         rm_check = verify_robbins_monro(schedule)
-        assert rm_check.condition_1_satisfied and rm_check.condition_2_satisfied
+        assert rm_check.condition_1_satisfied
+        assert rm_check.condition_2_satisfied
 
         np.random.seed(42)
         for _ in range(200):

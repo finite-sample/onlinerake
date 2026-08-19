@@ -209,7 +209,8 @@ def main():
     learning_rates = [2.0, 1.0, 0.5, 0.3, 0.1]
 
     print(
-        f"{'LR':>6} {'n_sgd_steps':>12} {'KL from IPF':>14} {'Max Diff':>12} {'ESS Ratio':>12}"
+        f"{'LR':>6} {'n_sgd_steps':>12} {'KL from IPF':>14} {'Max Diff':>12} "
+        f"{'ESS Ratio':>12}"
     )
     print("-" * 54)
 

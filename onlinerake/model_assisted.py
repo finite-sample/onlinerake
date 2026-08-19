@@ -35,12 +35,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from .models import OutcomeModel
 from .online_raking_sgd import OnlineRakingSGD
-from .targets import Targets
 
 if TYPE_CHECKING:
     from .learning_rate import LearningRateSchedule
+    from .models import OutcomeModel
+    from .targets import Targets
 
 
 @dataclass
@@ -64,6 +64,7 @@ class ModelAssistedTargets:
     prediction_targets: dict[str, float] | None = None
 
     def __post_init__(self) -> None:
+        """Validate that every prediction target is numeric."""
         if self.prediction_targets is not None:
             for name, value in self.prediction_targets.items():
                 if not isinstance(value, (int, float)):
@@ -291,10 +292,7 @@ class ModelAssistedRaker(OnlineRakingSGD):
         """
         features = []
         for name in self.feature_names_in_obs:
-            if isinstance(obs, dict):
-                val = obs.get(name, 0)
-            else:
-                val = getattr(obs, name, 0)
+            val = obs.get(name, 0) if isinstance(obs, dict) else getattr(obs, name, 0)
             features.append(float(val))
         return np.array(features, dtype=np.float64)
 
@@ -479,7 +477,7 @@ class ModelAssistedRaker(OnlineRakingSGD):
 
         # If we have a prediction target, apply GREG adjustment
         if self.prediction_targets:
-            target_value = list(self.prediction_targets.values())[0]
+            target_value = next(iter(self.prediction_targets.values()))
             weighted_pred = self.weighted_mean_prediction
             # GREG adjustment: add the difference between target and achieved prediction
             greg_adjustment = target_value - weighted_pred
@@ -493,7 +491,7 @@ class ModelAssistedRaker(OnlineRakingSGD):
         if self._n_obs == 0 or not self.prediction_targets:
             return 0.0
 
-        target_value = list(self.prediction_targets.values())[0]
+        target_value = next(iter(self.prediction_targets.values()))
         current = self.weighted_mean_prediction
         return float((current - target_value) ** 2)
 
@@ -530,17 +528,20 @@ class PoststratificationCells:
         cells: List of PoststratificationCell objects.
 
     Examples:
+        >>> young = {"age_group": "young"}
+        >>> old = {"age_group": "old"}
         >>> cells = PoststratificationCells([
-        ...     PoststratificationCell("young_female", {"age_group": "young", "female": 1}, 0.15),
-        ...     PoststratificationCell("young_male", {"age_group": "young", "female": 0}, 0.14),
-        ...     PoststratificationCell("old_female", {"age_group": "old", "female": 1}, 0.36),
-        ...     PoststratificationCell("old_male", {"age_group": "old", "female": 0}, 0.35),
+        ...     PoststratificationCell("young_female", young | {"female": 1}, 0.15),
+        ...     PoststratificationCell("young_male", young | {"female": 0}, 0.14),
+        ...     PoststratificationCell("old_female", old | {"female": 1}, 0.36),
+        ...     PoststratificationCell("old_male", old | {"female": 0}, 0.35),
         ... ])
     """
 
     cells: list[PoststratificationCell] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        """Validate that the cells' population proportions sum to one."""
         total_prop = sum(c.population_proportion for c in self.cells)
         if abs(total_prop - 1.0) > 1e-6 and len(self.cells) > 0:
             raise ValueError(

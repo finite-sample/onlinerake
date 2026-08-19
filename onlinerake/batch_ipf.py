@@ -11,12 +11,13 @@ raking algorithms' interface.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
 
-from .targets import Targets
+if TYPE_CHECKING:
+    from .targets import Targets
 
 
 class BatchIPF:
@@ -233,7 +234,8 @@ class BatchIPF:
 
                 # Compute adjustment factor
                 # For observations where feature=1: multiply by target/current_margin
-                # For observations where feature=0: multiply by (1-target)/(1-current_margin)
+                # For observations where feature=0: multiply by
+                # (1-target)/(1-current_margin)
                 adjustment_1 = target / current_margin if current_margin > 0 else 1.0
                 adjustment_0 = (
                     (1 - target) / (1 - current_margin) if current_margin < 1 else 1.0

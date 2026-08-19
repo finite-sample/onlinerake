@@ -185,8 +185,7 @@ class StreamingEstimator:
         if not self.snapshots:
             return None
 
-        closest = min(self.snapshots, key=lambda s: abs(s.t - t))
-        return closest
+        return min(self.snapshots, key=lambda s: abs(s.t - t))
 
 
 def estimate_path_dependent_variance(

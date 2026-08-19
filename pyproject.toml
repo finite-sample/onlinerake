@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.9.14,<0.13.0"]
+requires = ["uv_build>=0.12.5,<0.13"]
 build-backend = "uv_build"
 
 [project]
@@ -11,14 +11,15 @@ requires-python = ">=3.12"
 authors = [
     { name = "Gaurav Sood", email = "gsood07@gmail.com" }
 ]
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = ["survey", "raking", "calibration", "weighting", "streaming", "online-learning"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
@@ -33,34 +34,40 @@ Documentation = "https://finite-sample.github.io/onlinerake/"
 Repository = "https://github.com/finite-sample/onlinerake"
 Issues = "https://github.com/finite-sample/onlinerake/issues"
 
-[project.optional-dependencies]
-docs = [
-    "sphinx>=7.0",
-    "furo>=2024.1.29",
-    "sphinx-autodoc-typehints>=1.25",
-    "sphinx-copybutton>=0.5",
-    "myst-parser>=2.0",
-    "nbsphinx>=0.8.0",
-    "jupyter>=1.0.0",
-    "matplotlib>=3.5.0",
-    "seaborn>=0.11.0",
-    "plotly>=5.0.0",
-    "ipywidgets>=7.6.0",
-]
-
-
 [tool.uv.build-backend]
 module-name = "onlinerake"
 module-root = ""
 
 [dependency-groups]
-dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.7.0", "mypy>=1.0", "pre-commit>=3.0", "twine>=4.0", "pydoclint>=0.5.0", "pyright>=1.1.0"]
+dev = [
+    "ruff>=0.14",
+    "pyright>=1.1.390",
+    "pre-commit>=4",
+    "pydoclint>=0.9",
+    { include-group = "test" },
+]
 test = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
+    "pytest>=8",
+    "pytest-cov>=6",
     # A git reference, so it stays in dependency-groups and out of the published
     # extras: PyPI rejects direct URL references in project metadata.
     "simcheck @ git+https://github.com/finite-sample/simcheck",
+]
+docs = [
+    "sphinx>=8",
+    "furo",
+    "myst-parser",
+    "sphinx-copybutton",
+    "py-canon @ git+https://github.com/gojiplus/py-canon@v1",
+    # The docs embed three example notebooks. nbsphinx shells out to a `pandoc`
+    # binary that the shared docs workflow's runner does not have and cannot be
+    # told to apt-get; pypandoc-binary ships one inside its wheel, and conf.py
+    # puts it on PATH.
+    "nbsphinx>=0.9",
+    "pypandoc-binary>=1.15",
+    "ipykernel>=6",
+    "matplotlib>=3.5",
+    "seaborn>=0.11",
 ]
 
 [tool.ruff]
@@ -69,38 +76,78 @@ target-version = "py312"
 exclude = ["docs/notebooks/*.ipynb"]
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "C4", "UP"]
-ignore = ["E501", "B008"]
+external = ["DOC"]
+select = [
+    "E", "W", "F", "I", "B", "C4", "UP", "N", "D", "S", "SIM", "T20", "PT", "RUF",
+    "PTH", "RET", "PIE", "FURB", "PERF", "DTZ", "LOG", "G", "TC", "FLY",
+    "RSE", "SLOT", "FA", "A", "EXE", "ICN", "PGH", "PLE", "ARG", "SLF",
+]
+# D203/D213: the google convention the fleet standard picks. W191/D206/D300:
+# ruff's own docs list these as always incompatible with `ruff format`, which
+# the standard also runs.
+# D107: every constructor's arguments are documented in its class docstring,
+# which is what pydoclint's allow-init-docstring permits; a second docstring on
+# __init__ would restate them.
+ignore = ["D203", "D213", "W191", "D206", "D300", "D107"]
+# The algorithms are described in the docstrings with the notation the papers
+# use: α for the learning rate, × for a product. Spelling those "a" and "x"
+# would be worse.
+allowed-confusables = ["α", "×"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
+# Unused fixture arguments and private-member access are how tests are written;
+# `X` is the design matrix (see the naming note below).
+"tests/**" = ["S101", "D", "ARG", "SLF", "N803", "N806"]
+"docs/**" = ["D"]
 "__init__.py" = ["F401"]
-"tests/*" = ["S101"]
-
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-check_untyped_defs = true
+# Demonstration and evaluation scripts. Printing the result is what they exist
+# to do, and none of them is importable API with a docstring obligation.
+"examples/**" = ["T201", "D", "N806"]
+"scripts/**" = ["T201", "D", "N802", "N803", "N806", "SLF001"]
+# Statistical notation, the same convention scikit-learn's own API uses: `X` is
+# the design matrix, `D` a treatment indicator, `Cov` a covariance matrix.
+"onlinerake/models.py" = ["N803", "N806"]
+# The diagnostics, convergence and inference modules are companion analysis
+# code for the estimators in the same package: reading the estimator's
+# package-internal state is their job, and PEP 8's single underscore marks
+# exactly that scope. Making these attributes public would freeze internals
+# into the released API.
+"onlinerake/_utils.py" = ["SLF001"]
+"onlinerake/convergence.py" = ["SLF001"]
+"onlinerake/diagnostics.py" = ["SLF001"]
+"onlinerake/model_assisted.py" = ["SLF001"]
+"onlinerake/sensitivity.py" = ["SLF001"]
+"onlinerake/streaming_inference.py" = ["SLF001"]
 
 [tool.pydoclint]
 style = "google"
 arg-type-hints-in-docstring = false
 check-return-types = false
-check-arg-names = true
 check-class-attributes = false
+allow-init-docstring = true
+exclude = '\.venv|tests|docs'
+check-arg-names = true
 require-return-section-when-returning-nothing = false
 check-yield-types = true
 skip-checking-raises = true
 
 [tool.pyright]
 include = ["onlinerake"]
+typeCheckingMode = "standard"
 exclude = ["tests", "docs", "ms"]
 reportMissingImports = true
 reportMissingTypeStubs = false
 pythonVersion = "3.12"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["onlinerake"]
+
 [tool.deptry]
-# Exclude manuscript folder from dependency checking
+# The manuscript directory holds LaTeX and figures, not importable code.
 extend_exclude = ["ms"]
-# Ignore documentation dependencies as they are optional and not used in main code
-per_rule_ignores = {DEP002 = ["sphinx", "furo", "sphinx-autodoc-typehints", "sphinx-copybutton", "myst-parser", "nbsphinx", "jupyter", "matplotlib", "seaborn", "plotly", "ipywidgets"]}

@@ -1,9 +1,7 @@
 name: Dependabot auto-merge
 
 # All the logic lives in py-canon, so a fix there reaches this repo on its
-# next run instead of waiting for someone to copy a file across. This repo
-# held its own ~13 KB copy until now, and being the copy nobody carried the
-# last two fixes into is why #5 deadlocked here and nowhere else.
+# next run instead of waiting for someone to copy a file across.
 
 on:
   pull_request:

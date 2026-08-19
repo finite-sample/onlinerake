@@ -1,4 +1,4 @@
-"""Tests for new features: batch IPF, learning rate schedules, diagnostics, sensitivity."""
+"""Tests for batch IPF, learning rate schedules, diagnostics, sensitivity."""
 
 import numpy as np
 import pytest
@@ -68,14 +68,13 @@ class TestBatchIPF:
 
         # Create biased observations
         np.random.seed(42)
-        observations = []
-        for _ in range(200):
-            observations.append(
-                {
-                    "age": int(np.random.random() < 0.6),  # Biased toward 0.6
-                    "gender": int(np.random.random() < 0.4),  # Biased toward 0.4
-                }
-            )
+        observations = [
+            {
+                "age": int(np.random.random() < 0.6),  # Biased toward 0.6
+                "gender": int(np.random.random() < 0.4),  # Biased toward 0.4
+            }
+            for _ in range(200)
+        ]
 
         ipf.fit(observations)
         margins = ipf.margins
@@ -96,15 +95,14 @@ class TestBatchIPF:
 
         # Generate observations
         np.random.seed(123)
-        observations = []
-        for _ in range(300):
-            observations.append(
-                {
-                    "age": int(np.random.random() < 0.6),
-                    "gender": int(np.random.random() < 0.4),
-                    "education": int(np.random.random() < 0.5),
-                }
-            )
+        observations = [
+            {
+                "age": int(np.random.random() < 0.6),
+                "gender": int(np.random.random() < 0.4),
+                "education": int(np.random.random() < 0.5),
+            }
+            for _ in range(300)
+        ]
 
         # Fit batch IPF
         ipf = BatchIPF(targets)
@@ -167,7 +165,8 @@ class TestLearningRateSchedules:
         """Test that polynomial decay satisfies Robbins-Monro conditions."""
         lr = PolynomialDecayLR(initial_lr=5.0, power=0.6, min_lr=0.0)
 
-        # Sum should diverge (we can't test infinity, but sum over many terms should be large)
+        # Sum should diverge (we can't test infinity, but the sum over many
+        # terms should be large)
         lr_sum = sum(lr(t) for t in range(1, 10001))
         assert lr_sum > 100  # Should be much larger than finite
 
@@ -333,15 +332,14 @@ class TestSensitivityAnalysis:
         """Test basic sensitivity analysis."""
         targets = Targets(age=0.5, gender=0.5)
 
-        observations = []
         np.random.seed(42)
-        for _ in range(100):
-            observations.append(
-                {
-                    "age": int(np.random.random() < 0.6),
-                    "gender": int(np.random.random() < 0.4),
-                }
-            )
+        observations = [
+            {
+                "age": int(np.random.random() < 0.6),
+                "gender": int(np.random.random() < 0.4),
+            }
+            for _ in range(100)
+        ]
 
         report = run_sensitivity_analysis(
             observations,
@@ -368,15 +366,14 @@ class TestSensitivityAnalysis:
         targets = Targets(age=0.5, gender=0.5)
         raker = OnlineRakingSGD(targets, learning_rate=3.0, n_sgd_steps=3)
 
-        observations = []
         np.random.seed(42)
-        for _ in range(50):
-            observations.append(
-                {
-                    "age": int(np.random.random() < 0.6),
-                    "gender": int(np.random.random() < 0.4),
-                }
-            )
+        observations = [
+            {
+                "age": int(np.random.random() < 0.6),
+                "gender": int(np.random.random() < 0.4),
+            }
+            for _ in range(50)
+        ]
 
         result = quick_sensitivity_check(raker, observations, n_variations=3)
 
@@ -471,15 +468,14 @@ class TestIntegration:
 
         # 3. Generate biased observations
         np.random.seed(42)
-        observations = []
-        for _ in range(200):
-            observations.append(
-                {
-                    "age": int(np.random.random() < 0.6),
-                    "gender": int(np.random.random() < 0.3),
-                    "education": int(np.random.random() < 0.5),
-                }
-            )
+        observations = [
+            {
+                "age": int(np.random.random() < 0.6),
+                "gender": int(np.random.random() < 0.3),
+                "education": int(np.random.random() < 0.5),
+            }
+            for _ in range(200)
+        ]
 
         # 4. Process observations
         for obs in observations:
@@ -503,14 +499,13 @@ class TestIntegration:
         targets = Targets(age=0.4, gender=0.5)
 
         np.random.seed(123)
-        observations = []
-        for _ in range(500):
-            observations.append(
-                {
-                    "age": int(np.random.random() < 0.6),
-                    "gender": int(np.random.random() < 0.4),
-                }
-            )
+        observations = [
+            {
+                "age": int(np.random.random() < 0.6),
+                "gender": int(np.random.random() < 0.4),
+            }
+            for _ in range(500)
+        ]
 
         # Fit batch IPF
         ipf = BatchIPF(targets)
