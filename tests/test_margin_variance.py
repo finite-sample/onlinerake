@@ -323,7 +323,7 @@ class TestTheDiagnosticsMoveOnTheRightAxes:
                 accepted += 1
         return next(
             c
-            for c in margin_calibration(raker, n_replicates=5)
+            for c in margin_calibration(raker, n_replicates=5, seed=seed)
             if c.feature == "college"
         )
 
