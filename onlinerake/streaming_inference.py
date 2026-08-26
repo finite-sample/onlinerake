@@ -250,7 +250,10 @@ def estimate_path_dependent_variance(
     # a fixed target produces. See onlinerake.diagnostics.
     from .diagnostics import estimate_margin_variance
 
-    sampling_variance = estimate_margin_variance(raker, feature)
+    # Forward the caller's seed: without it this component always used the
+    # estimator's own default, so two calls with different seeds shared their
+    # sampling-variance term and only the path term moved.
+    sampling_variance = estimate_margin_variance(raker, feature, seed=seed)
 
     # Order dependence, measured by refitting the same observations in shuffled
     # arrival orders. Not the spread of the last few history entries: those sit

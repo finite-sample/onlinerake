@@ -406,7 +406,7 @@ def run_greg_interval_study(
     )
 
     estimates, errors, covered = [], [], []
-    for child in np.random.SeedSequence(seed).spawn(reps):
+    for replicate, child in enumerate(np.random.SeedSequence(seed).spawn(reps)):
         rng = np.random.default_rng(child)
         raker = ModelAssistedRaker(
             ModelAssistedTargets(Targets(**POPULATION), {"y_hat": tau_pred}),
@@ -416,11 +416,17 @@ def run_greg_interval_study(
             raker.partial_fit(
                 obs, outcome=int(rng.random() < _outcome_probability(obs))
             )
+        # Forward a per-replicate seed: the estimators group observations into
+        # replicates randomly, and leaving them at their shared default meant
+        # every Monte Carlo replicate reused one grouping, so the spread these
+        # measure omitted the grouping's own contribution.
         lower, upper = model_assisted_confidence_interval(
-            raker, CONFIDENCE, method=method
+            raker, CONFIDENCE, method=method, seed=seed + replicate
         )
         estimates.append(raker.model_assisted_estimate)
-        errors.append(model_assisted_std_error(raker, method=method))
+        errors.append(
+            model_assisted_std_error(raker, method=method, seed=seed + replicate)
+        )
         covered.append(bool(lower <= POPULATION_MEAN_OUTCOME <= upper))
 
     return MonteCarloResult(
@@ -515,10 +521,17 @@ def run_paired_scheme_study(
         for obs in _stream(np.random.default_rng(seed + s), n):
             raker.partial_fit(obs)
         margins.append(raker.margins[FEATURE])
+        # Same seed for both schemes on a given stream -- that is what keeps
+        # the comparison paired -- but varying across streams, so the measured
+        # difference averages over groupings instead of resting on one.
         random_groups.append(
-            estimate_margin_std_error(raker, FEATURE, method="random_groups")
+            estimate_margin_std_error(
+                raker, FEATURE, method="random_groups", seed=seed + s
+            )
         )
-        jackknife.append(estimate_margin_std_error(raker, FEATURE, method="jackknife"))
+        jackknife.append(
+            estimate_margin_std_error(raker, FEATURE, method="jackknife", seed=seed + s)
+        )
     return (
         np.array(random_groups),
         np.array(jackknife),
