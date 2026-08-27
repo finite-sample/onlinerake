@@ -223,8 +223,13 @@ class BatchIPF:
                 feature_col = self._features[:, j]
                 target = self._target_array[j]
 
-                # Compute current weighted margin for this feature
+                # Compute current weighted margin for this feature. Guard the
+                # division rather than the result: with no observations the
+                # weights sum to zero, and 0/0 raises a RuntimeWarning before
+                # the extreme-margin check below ever sees the nan.
                 total_w = self._weights.sum()
+                if total_w <= 0:
+                    continue
                 weighted_sum = (self._weights * feature_col).sum()
                 current_margin = weighted_sum / total_w
 
