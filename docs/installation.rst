@@ -4,7 +4,7 @@ Installation
 Requirements
 ------------
 
-- Python 3.11 or later
+- Python 3.12 or later
 - NumPy >= 1.21
 - Pandas >= 1.3
 
@@ -33,31 +33,26 @@ For development work, install with additional dependencies:
 
 .. code-block:: bash
 
-   uv sync --group dev --group test
+   uv sync --all-groups
 
 Verify Installation
 -------------------
 
 Test that the package is working correctly:
 
-.. code-block:: python
+.. doctest::
 
-   import onlinerake
-   from onlinerake import OnlineRakingSGD, OnlineRakingMWU, Targets
-   
-   # Run a quick test
-   targets = Targets()
-   raker = OnlineRakingSGD(targets)
-   obs = {"age": 1, "gender": 0, "education": 1, "region": 0}
-   raker.partial_fit(obs)
-   print(f"Success! Margins: {raker.margins}")
+   >>> from onlinerake import OnlineRakingMWU, Targets
+   >>> raker = OnlineRakingMWU(Targets(female=0.5))
+   >>> raker.partial_fit({"female": 1})
+   >>> raker.partial_fit({"female": 0})
+   >>> raker.margins
+   {'female': 0.5}
 
-You can also explore the interactive tutorials:
+To explore the interactive tutorials, run these commands in the cloned
+repository. The published package does not include the notebook files.
 
 .. code-block:: bash
 
-   # Install with documentation dependencies
-   pip install onlinerake[docs]
-   
-   # Launch Jupyter notebooks
-   jupyter notebook docs/notebooks/
+   uv sync --all-groups
+   uv run --with notebook jupyter notebook docs/notebooks/

@@ -5,14 +5,14 @@ We welcome contributions to `onlinerake`! This guide will help you get started.
 ## Development Setup
 
 **Requirements**
-- Python 3.11 or later
+- Python 3.12 or later
 - uv (recommended) or pip
 
 **Clone and Setup**
 ```bash
 git clone https://github.com/finite-sample/onlinerake.git
 cd onlinerake
-uv sync --group dev --group test
+uv sync --all-groups
 ```
 
 ## Development Workflow
@@ -20,10 +20,10 @@ uv sync --group dev --group test
 **Running Tests**
 ```bash
 # Run comprehensive test suite
-uv run pytest tests/test_onlinerake.py -v --cov=onlinerake --cov-report=term
+uv run pytest --cov --cov-report=term --cov-fail-under=89
 
 # Test interactive tutorials
-jupyter notebook docs/notebooks/
+uv run --with notebook jupyter notebook docs/notebooks/
 ```
 
 **Code Quality**
