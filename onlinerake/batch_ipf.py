@@ -38,7 +38,7 @@ class BatchIPF:
         max_weight: Upper bound for weights to prevent explosion.
 
     Examples:
-        >>> from onlinerake import Targets
+        >>> from onlinerake import BatchIPF, Targets
         >>> targets = Targets(female=0.5, college=0.3)
         >>> data = [
         ...     {"female": 1, "college": 1},
