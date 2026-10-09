@@ -30,6 +30,8 @@ bound APIs and changes the learning-rate defaults.
 
 ### Fixed
 
+- Model-assisted calibration validates scheduled rates before recording a row,
+  so a rejected observation cannot contaminate later estimates.
 - Both online methods and both IPF fitting paths check actual calibration error.
 - MWU bounds updated log weights before exponentiation to prevent intermediate
   overflow. Weight statistics always describe the current fit.

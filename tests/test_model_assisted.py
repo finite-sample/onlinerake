@@ -813,3 +813,31 @@ class TestArgumentValidationDoesNotDependOnSampleSize:
         low, high = model_assisted_confidence_interval(self._raker(1))
         assert np.isnan(low)
         assert np.isnan(high)
+
+
+@pytest.mark.parametrize("invalid_rate", [np.nan, np.inf, 0.0, -1.0])
+def test_invalid_schedule_does_not_commit_model_assisted_observation(invalid_rate):
+    invalid = False
+
+    def schedule(t):
+        return invalid_rate if invalid and t == 2 else 1.0
+
+    model = LinearOutcomeModel()
+    model.fit(np.array([[0.0], [1.0]]), np.array([0.0, 1.0]))
+    raker = ModelAssistedRaker(
+        ModelAssistedTargets(Targets(a=0.5)), model, learning_rate=schedule
+    )
+    raker.partial_fit({"a": 0}, outcome=0.0)
+    before_weights = raker.weights
+    before_predictions = raker.predictions
+    invalid = True
+    with pytest.raises(ValueError, match="learning_rate"):
+        raker.partial_fit({"a": 1}, outcome=99.0)
+    np.testing.assert_array_equal(raker.weights, before_weights)
+    np.testing.assert_array_equal(raker.predictions, before_predictions)
+    np.testing.assert_array_equal(raker.outcomes, [0.0])
+    assert len(raker.history) == 1
+    invalid = False
+    raker.partial_fit({"a": 1}, outcome=1.0)
+    np.testing.assert_array_equal(raker.outcomes, [0.0, 1.0])
+    assert len(raker.history) == 2

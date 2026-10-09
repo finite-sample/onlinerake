@@ -370,6 +370,9 @@ class ModelAssistedRaker(OnlineRakingSGD):
         model_features = self._extract_model_features(obs)
         prediction = float(self.model.predict(model_features.reshape(1, -1))[0])
 
+        feature_values = self._extract_feature_values(obs)
+        current_lr = self._get_current_learning_rate(self._n_obs + 1)
+
         # Store prediction and the inputs that produced it
         self._predictions[self._n_obs] = prediction
         self._model_features[self._n_obs] = model_features
@@ -381,16 +384,10 @@ class ModelAssistedRaker(OnlineRakingSGD):
         else:
             self._has_outcomes[self._n_obs] = False
 
-        # Extract demographic features using parent helper
-        feature_values = self._extract_feature_values(obs)
-
         # Store observation
         self._features[self._n_obs] = feature_values
         self._weights[self._n_obs] = 1.0
         self._n_obs += 1
-
-        # Get current learning rate
-        current_lr = self._get_current_learning_rate()
 
         # Perform SGD steps
         final_gradient_norm = 0.0
