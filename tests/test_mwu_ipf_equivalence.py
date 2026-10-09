@@ -1,11 +1,8 @@
-"""Tests verifying MWU convergence to IPF solution.
+"""Empirical comparisons to IPF, not an entropy-balancing equivalence theorem.
 
-MWU (Multiplicative Weights Update) is mirror descent with KL divergence
-as the regularizer. As learning rate η → 0, MWU should converge to the
-same solution as batch IPF, which minimizes D_KL(w || w_0) subject to
-margin constraints.
-
-These tests verify this theoretical relationship empirically.
+Arrival order, finite updates and clipping affect online weights. These examples
+check limited numerical behavior. Exact gradients, independent reference weights,
+and a counterexample to general IPF equivalence are in test_calibration_correctness.
 """
 
 import numpy as np
@@ -18,7 +15,7 @@ from onlinerake import (
     Targets,
     compare_to_ipf,
     kl_divergence_weights,
-    optimal_mwu_learning_rate,
+    suggest_mwu_learning_rate,
     symmetric_kl_divergence,
     total_variation_weights,
 )
@@ -211,9 +208,6 @@ class TestMWUMatchesIPF:
         for kl in kl_from_ipf:
             assert kl < 0.2, f"KL should be reasonable: {kl}"
 
-        # The configuration with most steps should be among the best
-        assert kl_from_ipf[-1] < max(kl_from_ipf) * 2
-
     def test_mwu_approaches_ipf_with_more_iterations(self):
         """MWU should get closer to IPF with more observations/iterations."""
         targets = Targets(a=0.5, b=0.3)
@@ -393,19 +387,19 @@ class TestOptimalLearningRate:
 
     def test_optimal_lr_reasonable_range(self):
         """Optimal LR should be in reasonable range."""
-        lr = optimal_mwu_learning_rate(n_observations=100, n_features=4)
+        lr = suggest_mwu_learning_rate(n_observations=100, n_features=4)
         assert 0.01 <= lr <= 5.0
 
     def test_optimal_lr_decreases_with_n(self):
         """Optimal LR should decrease with more observations."""
-        lr_100 = optimal_mwu_learning_rate(n_observations=100, n_features=4)
-        lr_10000 = optimal_mwu_learning_rate(n_observations=10000, n_features=4)
+        lr_100 = suggest_mwu_learning_rate(n_observations=100, n_features=4)
+        lr_10000 = suggest_mwu_learning_rate(n_observations=10000, n_features=4)
         assert lr_10000 < lr_100
 
     def test_optimal_lr_increases_with_features(self):
         """Optimal LR scales with number of features."""
-        lr_2 = optimal_mwu_learning_rate(n_observations=1000, n_features=2)
-        lr_8 = optimal_mwu_learning_rate(n_observations=1000, n_features=8)
+        lr_2 = suggest_mwu_learning_rate(n_observations=1000, n_features=2)
+        lr_8 = suggest_mwu_learning_rate(n_observations=1000, n_features=8)
         assert lr_8 > lr_2
 
 
@@ -486,8 +480,8 @@ class TestSGDvsIPF:
     def test_mwu_closer_to_ipf_weights_than_sgd(self):
         """MWU should produce weights closer to IPF than SGD.
 
-        This is because MWU uses the same KL-based update as IPF,
-        while SGD uses additive updates on squared error.
+        This assertion describes this particular simulated sample only;
+        no general ordering of the two methods is implied.
         """
         targets = Targets(a=0.5, b=0.4)
         observations = generate_biased_sample(100, targets, bias=0.1)
@@ -508,7 +502,7 @@ class TestSGDvsIPF:
         sgd_kl = kl_divergence_weights(sgd.weights, ipf_weights)
 
         # MWU should be closer to IPF in KL sense
-        # (This is the key theoretical property we're testing)
+        # This is an empirical regression for the specified sample.
         assert mwu_kl < sgd_kl * 2, (
             f"MWU should be closer to IPF than SGD. "
             f"MWU KL: {mwu_kl:.6f}, SGD KL: {sgd_kl:.6f}"

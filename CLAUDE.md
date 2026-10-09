@@ -13,7 +13,7 @@ The package enables real-time weight adjustment for streaming survey data to mat
 ## Recent Major Updates
 
 ### Performance
-- **Capacity doubling**: Eliminated O(n²) memory reallocations for weights storage
+- **Capacity doubling**: Amortized allocation; full-data gradient work remains quadratic over the stream
 - **Array optimization**: Moved demographic conversions outside gradient loops
 - **Configurable statistics**: Optional weight distribution computations (10-100x speedup for large streams)
 - **Cost is quadratic in stream length, by design.** `partial_fit` rewrites all
@@ -90,9 +90,9 @@ uv run python scripts/eval/plot_eval_results.py
 
 ## Key Implementation Details
 
-- **Performance**: Capacity doubling for O(log n) weight storage, optimized array conversions
+- **Performance**: O(n × d) feature storage with capacity doubling
 - **Numerical safety**: Dtype-aware exponent clipping, robust convergence detection
-- **Algorithms**: SGD uses squared-error loss; MWU uses KL divergence via mirror descent
+- **Algorithms**: Both minimize squared moment loss; MWU uses entropic update geometry and is not guaranteed equivalent to batch EB
 - **Data structures**: Pre-allocated arrays, configurable weight statistics computation
 - **API**: Scikit-learn compatible `partial_fit` pattern with comprehensive diagnostics
 - **Dependencies**: Minimal - only numpy and pandas required

@@ -10,6 +10,7 @@ onlinerake: Streaming Survey Raking
    notebooks
    diagnostics
    api_reference
+   software-audit
 
 Modern online surveys and passive data collection streams generate
 responses one record at a time. Classic weighting methods such as
@@ -57,7 +58,8 @@ Algorithms
 
 **MWU Raking** 
    Multiplicative weights update inspired by mirror descent under KL divergence.
-   Yields weight distributions similar to classic IPF but can produce heavier tails.
+   Reduces squared moment error using bounded multiplicative updates. The
+   weights depend on arrival order and need not equal a full-sample IPF fit.
 
 Indices and tables
 ==================

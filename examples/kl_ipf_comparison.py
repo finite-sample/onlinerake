@@ -29,7 +29,7 @@ from onlinerake import (
     Targets,
     compare_to_ipf,
     kl_divergence_weights,
-    optimal_mwu_learning_rate,
+    suggest_mwu_learning_rate,
     symmetric_kl_divergence,
     total_variation_weights,
 )
@@ -245,7 +245,7 @@ def main():
     print()
 
     n_features = len(targets.feature_names)
-    suggested_lr = optimal_mwu_learning_rate(
+    suggested_lr = suggest_mwu_learning_rate(
         n_observations=n_obs, n_features=n_features
     )
 
@@ -275,7 +275,7 @@ def main():
     print("1. MWU with KL tracking monitors weight distribution changes per update")
     print("2. compare_to_ipf() provides comprehensive MWU vs IPF comparison")
     print("3. Smaller learning rates with more iterations yield closer IPF match")
-    print("4. optimal_mwu_learning_rate() provides data-driven LR suggestions")
+    print("4. suggest_mwu_learning_rate() provides data-driven LR suggestions")
     print("5. KL divergence is asymmetric; symmetric_kl offers a symmetric alternative")
     print()
     print("MWU is theoretically grounded as mirror descent with KL regularization,")

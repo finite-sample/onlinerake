@@ -1,24 +1,8 @@
-"""Formal convergence analysis for online raking algorithms.
+"""Learning-rate series checks and empirical calibration diagnostics.
 
-This module provides rigorous theoretical foundations for the convergence
-of SGD and MWU raking algorithms. It addresses the critical gap between
-theoretical claims and practical implementation by:
-
-1. Formally stating convergence theorems with precise conditions
-2. Verifying Robbins-Monro conditions for learning rate schedules
-3. Computing Lipschitz constants for gradient functions
-4. Providing bounds on convergence rates
-
-The theoretical framework is based on stochastic approximation theory
-and online convex optimization.
-
-References:
-    - Robbins, H., & Monro, S. (1951). A stochastic approximation method.
-      The Annals of Mathematical Statistics, 22(3), 400-407.
-    - Shalev-Shwartz, S. (2012). Online learning and online convex optimization.
-      Foundations and Trends in Machine Learning, 4(2), 107-194.
-    - Duchi, J., Hazan, E., & Singer, Y. (2011). Adaptive subgradient methods
-      for online learning and stochastic optimization. JMLR, 12, 2121-2159.
+Schedule summability alone does not establish convergence of a growing,
+clipped, path-dependent calibration problem. No numerical loss or regret
+certificate is supplied for these online estimators.
 """
 
 from __future__ import annotations
@@ -28,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from ._utils import requires_observations
+from ._utils import requires_observations, validate_count, validate_positive
 
 if TYPE_CHECKING:
     from .learning_rate import LearningRateSchedule
@@ -37,7 +21,6 @@ if TYPE_CHECKING:
 
 # Module-level constants for magic numbers
 LIPSCHITZ_PERTURBATION_SCALE = 0.1
-SUBOPTIMALITY_FACTOR = 0.1
 WEIGHT_RATIO_WARN = 100
 WEIGHT_RATIO_FAIL = 1000
 ESS_WARN_THRESHOLD = 0.5
@@ -53,7 +36,8 @@ class ConvergenceAnalysis:
         satisfies_robbins_monro: Whether learning rate satisfies RM conditions.
         lipschitz_constant: Estimated Lipschitz constant of the loss gradient.
         convergence_rate: Theoretical convergence rate (if applicable).
-        expected_iterations: Expected iterations to reach ``loss_tolerance``.
+        expected_iterations: Rough extrapolation from recent loss, or None.
+            Changes in incoming data can invalidate it.
         warnings: List of potential issues with convergence.
     """
 
@@ -123,6 +107,7 @@ def verify_robbins_monro(
         >>> print(result.condition_2_satisfied)  # Should be True
         True
     """
+    validate_count(n_steps, "n_steps")
     notes: list[str] = []
 
     # Handle constant float
@@ -131,6 +116,21 @@ def verify_robbins_monro(
 
     # Analytical verification for known types
     params = schedule.get_params()
+    if (
+        params.get("type") in {"polynomial_decay", "inverse_time_decay"}
+        and params.get("min_lr", 0) > 0
+    ):
+        rates = np.array([schedule(t) for t in range(1, n_steps + 1)])
+        return RobbinsMonroVerification(
+            condition_1_satisfied=True,
+            condition_2_satisfied=False,
+            sum_lr_estimate=float(rates.sum()),
+            sum_lr_sq_estimate=float((rates**2).sum()),
+            n_steps_evaluated=n_steps,
+            analysis_notes=[
+                "A positive learning-rate floor makes the squared-rate sum diverge."
+            ],
+        )
     schedule_type = params.get("type", "unknown")
 
     if schedule_type == "constant":
@@ -150,6 +150,7 @@ def _verify_constant(
     lr: float, n_steps: int, notes: list[str]
 ) -> RobbinsMonroVerification:
     """Constant LR: sum diverges (✓), squared sum diverges (✗)."""
+    validate_positive(lr, "learning_rate")
     notes.append(f"Constant learning rate: η = {lr}")
     notes.append("")
     notes.append("Condition 1 (Σ η_t = ∞): SATISFIED")
@@ -204,7 +205,9 @@ def _verify_polynomial(
     notes.append("")
     if cond1 and cond2:
         notes.append("CONCLUSION: Robbins-Monro conditions satisfied.")
-        notes.append("Theoretical convergence guaranteed.")
+        notes.append(
+            "These series conditions alone do not guarantee raker convergence."
+        )
     else:
         notes.append("CONCLUSION: Robbins-Monro conditions NOT satisfied.")
         notes.append(f"Required: 0.5 < power ≤ 1. Current: power = {power}")
@@ -355,9 +358,8 @@ def estimate_lipschitz_constant(
     The Lipschitz constant L bounds how fast the gradient can change:
         ||∇f(w) - ∇f(w')|| ≤ L ||w - w'||
 
-    For SGD convergence, the learning rate should satisfy η ≤ 1/L
-    for deterministic convergence, or use diminishing rates for
-    stochastic convergence.
+    The sampled ratios are local diagnostics, not a global upper bound on L
+    or a certificate that any learning rate is safe.
 
     For the squared-error margin loss used in raking:
         L(w) = Σ_j (m_j(w) - t_j)²
@@ -372,7 +374,7 @@ def estimate_lipschitz_constant(
     Returns:
         Estimated Lipschitz constant L.
     """
-    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
 
     # Get current weights and gradient
     w = raker._weights[: raker._n_obs].copy()
@@ -383,15 +385,15 @@ def estimate_lipschitz_constant(
 
     for _ in range(n_samples):
         # Create small perturbation
-        delta = np.random.randn(len(w)) * LIPSCHITZ_PERTURBATION_SCALE
+        delta = rng.standard_normal(len(w)) * LIPSCHITZ_PERTURBATION_SCALE
         w_perturbed = np.clip(w + delta, raker.min_weight, raker.max_weight)
 
         # Compute gradient at perturbed point
-        raker._weights[: raker._n_obs] = w_perturbed
-        grad_perturbed = raker._compute_gradient()
-
-        # Restore original weights
-        raker._weights[: raker._n_obs] = w
+        try:
+            raker._weights[: raker._n_obs] = w_perturbed
+            grad_perturbed = raker._compute_gradient()
+        finally:
+            raker._weights[: raker._n_obs] = w
 
         # Compute ratio
         grad_diff = np.linalg.norm(grad_perturbed - grad_current)
@@ -444,7 +446,7 @@ def analyze_convergence(
         satisfies_rm = False
         warnings.append(
             "Using constant learning rate. Consider a diminishing schedule "
-            "for guaranteed convergence."
+            "when decaying adaptation is appropriate; this does not guarantee balance."
         )
 
     # Estimate Lipschitz constant
@@ -462,15 +464,11 @@ def analyze_convergence(
             "This may cause oscillation or divergence."
         )
 
-    # Determine convergence rate
-    if satisfies_rm:
-        convergence_rate = "O(1/√T) (stochastic)"
-    elif (
-        np.isnan(lipschitz) or lipschitz <= 0 or raker.learning_rate <= 1.0 / lipschitz
-    ):
-        convergence_rate = "Bounded suboptimality (constant LR)"
-    else:
-        convergence_rate = "May not converge (LR too large)"
+    convergence_rate = "Not established for the growing, clipped calibration problem"
+    warnings.append(
+        "Robbins-Monro summability and sampled curvature are diagnostics, "
+        "not a convergence or entropy-balancing certificate."
+    )
 
     # Estimate iterations to convergence
     if raker._n_obs > 0 and raker.loss > loss_tolerance:
@@ -515,152 +513,14 @@ def analyze_convergence(
     )
 
 
-def theoretical_convergence_bound(
-    n_observations: int,
-    n_features: int,
-    learning_rate_schedule: str = "polynomial",
-    initial_lr: float = 5.0,
-    power: float = 0.6,
-) -> dict[str, Any]:
-    """Compute theoretical convergence bounds.
-
-    Provides theoretical upper bounds on the expected loss after T
-    observations under standard stochastic approximation assumptions.
-
-    For polynomial decay η_t = η_0 / t^α with 0.5 < α ≤ 1:
-        E[L(w_T) - L(w*)] ≤ O(1/T^{min(α, 1-α)})
-
-    For α = 0.6, this gives O(1/T^0.4) convergence rate.
-
-    Args:
-        n_observations: Number of observations (T).
-        n_features: Number of features being calibrated.
-        learning_rate_schedule: "polynomial" or "constant".
-        initial_lr: Initial learning rate η_0.
-        power: Decay power α for polynomial schedule.
-
-    Returns:
-        Dictionary with convergence bounds and rates.
-
-    Examples:
-        >>> bounds = theoretical_convergence_bound(
-        ...     n_features=4,
-        ...     n_observations=1000,
-        ...     learning_rate_schedule="polynomial",
-        ...     initial_lr=5.0,
-        ...     power=0.6
-        ... )
-        >>> bounds["convergence_rate"]
-        'O(1/T^0.40)'
-        >>> bounds["satisfies_robbins_monro"]
-        True
-        >>> print(f"{bounds['expected_loss_bound']:.6f}")
-        1.261915
-    """
-    if learning_rate_schedule == "polynomial":
-        # For polynomial decay with Robbins-Monro compliant power
-        effective_power = min(power, 1 - power)
-        convergence_rate = n_observations ** (-effective_power)
-
-        # Rough bound incorporating problem dimension
-        bound_constant = initial_lr * n_features
-        expected_loss_bound = bound_constant * convergence_rate
-
-        return {
-            "schedule_type": "polynomial",
-            "decay_power": power,
-            "effective_rate_power": effective_power,
-            "convergence_rate": f"O(1/T^{effective_power:.2f})",
-            "expected_loss_bound": expected_loss_bound,
-            "satisfies_robbins_monro": 0.5 < power <= 1.0,
-            "notes": [
-                f"Polynomial decay η_t = {initial_lr}/t^{power}",
-                f"Convergence rate: O(1/T^{effective_power:.2f})",
-                f"After {n_observations} observations, expected excess loss "
-                f"≤ {expected_loss_bound:.6f}",
-            ],
-        }
-    if learning_rate_schedule == "constant":
-        # Constant learning rate gives bounded suboptimality
-        # E[L(w_T)] - L(w*) ≤ O(η) for small enough η
-        suboptimality_bound = initial_lr * n_features * SUBOPTIMALITY_FACTOR
-
-        return {
-            "schedule_type": "constant",
-            "learning_rate": initial_lr,
-            "convergence_rate": "O(1) - bounded suboptimality",
-            "expected_loss_bound": suboptimality_bound,
-            "satisfies_robbins_monro": False,
-            "notes": [
-                f"Constant learning rate η = {initial_lr}",
-                "Does not satisfy Robbins-Monro conditions",
-                "Converges to a neighborhood of the optimum",
-                f"Suboptimality bounded by approximately {suboptimality_bound:.4f}",
-                "For exact convergence, use diminishing learning rates",
-            ],
-        }
-    raise ValueError(f"Unknown schedule type: {learning_rate_schedule}")
-
-
-def mwu_convergence_analysis(
-    n_observations: int,
-    n_features: int,
-    learning_rate: float = 1.0,
-) -> dict[str, Any]:
-    """Analyze MWU algorithm convergence properties.
-
-    The Multiplicative Weights Update (MWU) algorithm can be viewed as
-    mirror descent with the negative entropy (KL divergence) regularizer:
-        w_{t+1} = argmin_w { ⟨g_t, w⟩ + (1/η) D_KL(w || w_t) }
-
-    This gives the update rule:
-        w_i ← w_i · exp(-η · g_i)
-
-    MWU has regret bound O(√(T log n)) for online convex optimization,
-    which translates to O(√(log n / T)) convergence rate for average loss.
-
-    Args:
-        n_observations: Number of observations.
-        n_features: Number of features.
-        learning_rate: MWU learning rate.
-
-    Returns:
-        Dictionary with MWU-specific convergence analysis.
-    """
-    # MWU regret bound
-    regret_bound = np.sqrt(2 * np.log(n_features) * n_observations) / learning_rate
-
-    # Convergence rate for average loss
-    avg_loss_bound = regret_bound / n_observations
-
-    return {
-        "algorithm": "MWU (Mirror Descent)",
-        "regularizer": "Negative entropy (KL divergence)",
-        "regret_bound": regret_bound,
-        "average_loss_bound": avg_loss_bound,
-        "convergence_rate": f"O(√(log k / T)) where k={n_features}",
-        "optimal_learning_rate": np.sqrt(2 * np.log(n_features) / n_observations),
-        "notes": [
-            "MWU is equivalent to mirror descent with KL divergence",
-            "Maintains non-negativity of weights by construction",
-            "Connection to classical IPF: MWU → IPF as η → 0",
-            f"Regret after {n_observations} obs: ≤ {regret_bound:.4f}",
-            "Optimal η for this T: "
-            f"{np.sqrt(2 * np.log(n_features) / n_observations):.4f}",
-        ],
-    }
-
-
 def verify_convergence_conditions(
     raker: OnlineRakingSGD,
 ) -> dict[str, Any]:
-    """Verify all convergence conditions for a raking algorithm.
+    """Report empirical warnings and learning-rate series checks.
 
-    Performs a comprehensive check of:
-    1. Robbins-Monro conditions for learning rate
-    2. Lipschitz continuity and appropriate step size
-    3. Feasibility of target margins
-    4. Stability of weight distribution
+    Checks rate summability, sampled local curvature, weight spread, effective
+    sample size, and loss variation. PASS means no heuristic warning fired;
+    it is not proof of convergence or target feasibility.
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
@@ -699,29 +559,28 @@ def verify_convergence_conditions(
         }
         results["overall_status"] = "WARN"
         results["recommendations"].append(
-            "Constant learning rate provides bounded suboptimality, not exact "
-            "convergence. "
-            "Use robbins_monro_schedule() for guaranteed convergence."
+            "No convergence guarantee follows from the learning-rate choice. "
+            "Monitor actual margin errors and weight bounds."
         )
 
     # 2. Check Lipschitz constant and step size
     if raker._n_obs > 0:
         lipschitz = estimate_lipschitz_constant(raker, n_samples=100)
         if not np.isnan(lipschitz):
-            max_safe_lr = 1.0 / lipschitz if lipschitz > 0 else np.inf
+            inverse_local_curvature = 1.0 / lipschitz if lipschitz > 0 else np.inf
             current_lr = raker.current_learning_rate
 
             results["checks"]["lipschitz"] = {
-                "status": "PASS" if current_lr <= max_safe_lr else "WARN",
+                "status": "PASS" if current_lr <= inverse_local_curvature else "WARN",
                 "lipschitz_constant": lipschitz,
-                "max_safe_lr": max_safe_lr,
+                "inverse_local_curvature": inverse_local_curvature,
                 "current_lr": current_lr,
             }
 
-            if current_lr > max_safe_lr:
+            if current_lr > inverse_local_curvature:
                 results["recommendations"].append(
-                    f"Learning rate {current_lr:.4f} exceeds safe bound "
-                    f"{max_safe_lr:.4f}. This may cause oscillation. "
+                    f"Learning rate {current_lr:.4f} exceeds inverse sampled curvature "
+                    f"{inverse_local_curvature:.4f}. This may cause oscillation. "
                     "Consider reducing initial learning rate."
                 )
         else:

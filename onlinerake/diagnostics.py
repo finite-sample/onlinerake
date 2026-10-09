@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 # Module-level constants for magic numbers
 WEIGHT_THRESHOLD_RATIO = 0.95
 WEIGHT_LOWER_THRESHOLD_RATIO = 1.05
-MIN_FEASIBILITY_SCORE = 0.5
 PROGRESS_SCORE_BONUS = 0.5
 EXTREME_WEIGHT_RATIO = 1000
 MAX_WEIGHT_RATIO_COMPROMISE = 100.0
@@ -116,9 +115,10 @@ class FeasibilityReport:
     """Report on target feasibility.
 
     Attributes:
-        is_feasible: Whether all targets appear achievable.
+        is_feasible: Whether targets pass the marginal support screen; not a
+            certificate of joint feasibility under weight bounds.
         problematic_features: Features with potential feasibility issues.
-        feasibility_scores: Per-feature feasibility scores (0-1, higher is better).
+        feasibility_scores: Heuristic progress scores (0-1); not probabilities.
         recommendations: Suggested actions if infeasible.
     """
 
@@ -718,13 +718,10 @@ def check_target_feasibility(
 ) -> FeasibilityReport:
     """Check whether target margins are feasible given the observed data.
 
-    Feasibility issues arise when:
-    1. A target proportion is outside the range achievable by reweighting
-    2. Target combinations are mutually inconsistent
-    3. Not enough variation in the sample to achieve targets
-
-    This function detects potential feasibility issues and provides
-    actionable recommendations.
+    This marginal screen detects missing binary support and continuous targets
+    outside the observed range. Passing it does not establish joint feasibility
+    under weight bounds. Poor calibration or weights hitting their bounds prompt
+    tuning recommendations, but do not prove that a target is infeasible.
 
     Args:
         raker: A fitted OnlineRakingSGD or OnlineRakingMWU object.
@@ -811,9 +808,8 @@ def check_target_feasibility(
                 progress = 1 - (weighted_error / raw_error)
                 scores[feature] = min(1.0, progress + PROGRESS_SCORE_BONUS)
             else:
-                # Not making progress - potential feasibility issue
+                # Lack of progress can reflect tuning rather than infeasibility.
                 scores[feature] = 0.3
-                problematic.append(feature)
                 if is_binary:
                     recommendations.append(
                         f"'{feature}': Weighted margin ({weighted:.2%}) not converging "
@@ -836,13 +832,11 @@ def check_target_feasibility(
         at_max = weight_stats["max"] >= raker.max_weight * WEIGHT_THRESHOLD_RATIO
         at_min = weight_stats["min"] <= raker.min_weight * WEIGHT_LOWER_THRESHOLD_RATIO
         if at_max or at_min:
-            if feature not in problematic:
-                problematic.append(feature)
-                scores[feature] = min(scores.get(feature, 1.0), MIN_FEASIBILITY_SCORE)
             extreme_warning = (
                 f"Weights hitting bounds (min={raker.min_weight}, "
                 f"max={raker.max_weight}). "
-                "This may indicate target feasibility strain."
+                "Check tuning and attainable margins; hitting a bound alone does not "
+                "establish infeasibility."
             )
             if extreme_warning not in recommendations:
                 recommendations.append(extreme_warning)
@@ -1330,9 +1324,8 @@ def compare_to_ipf(
         >>> ipf = BatchIPF(targets).fit(data)
         >>> comparison = compare_to_ipf(mwu, ipf)
 
-        Under the conditions the Note below lists, MWU lands close to the batch
-        solution -- close in the weights themselves, and closer still in the
-        margins they produce:
+        In this particular example, the methods produce similar weights and
+        margins. This is not a guarantee for other streams:
 
         >>> comparison.weight_kl < 0.01
         True
@@ -1340,12 +1333,10 @@ def compare_to_ipf(
         True
 
     Note:
-        For MWU to closely match IPF:
-        1. Use small learning rates (η < 1.0)
-        2. Process many observations (n > 100)
-        3. Use multiple SGD steps per observation (n_sgd_steps >= 3)
-
-        MWU with η → 0 should produce D_KL → 0 and margin_mse → 0.
+        This is an empirical comparison, not an equivalence guarantee. Arrivals
+        and clipping change the online path. At fixed work, taking the learning
+        rate to zero leaves the initial weights rather than producing the IPF
+        solution.
     """
     from .batch_ipf import BatchIPF
     from .divergence import kl_divergence_weights, total_variation_weights
@@ -1408,52 +1399,27 @@ def compare_to_ipf(
     )
 
 
-def optimal_mwu_learning_rate(n_observations: int, n_features: int) -> float:
-    """Compute theoretical optimal learning rate for MWU to approximate IPF.
+def suggest_mwu_learning_rate(n_observations: int, n_features: int) -> float:
+    """Suggest a starting rate for an empirical MWU tuning sweep.
 
-    From mirror descent theory, the optimal learning rate is approximately:
-        η* ≈ sqrt(2 * log(n_observations) / T)
-
-    where T is the expected number of iterations. For streaming raking with
-    n_sgd_steps per observation, T ≈ n_observations * n_sgd_steps.
-
-    A smaller learning rate means MWU stays closer to IPF at each step,
-    but convergence is slower. This function provides a reasonable starting
-    point for tuning.
+    This dimension-based heuristic is not an optimality result, an IPF
+    approximation guarantee, or a safe step-size bound. Validate the resulting
+    margin errors on the intended stream, especially for continuous features.
 
     Args:
-        n_observations: Expected number of observations.
-        n_features: Number of features being calibrated.
+        n_observations: Expected positive observation count.
+        n_features: Positive number of calibration features.
 
     Returns:
-        Recommended learning rate for MWU.
-
-    Examples:
-        >>> print(f"{optimal_mwu_learning_rate(n_observations=1000, n_features=4):.3f}")
-        0.235
-
-        The bound goes as ``1/sqrt(T)``, so a longer stream warrants a smaller
-        step -- ten times the observations, roughly a third the rate:
-
-        >>> rate = optimal_mwu_learning_rate(n_observations=10000, n_features=4)
-        >>> print(f"{rate:.3f}")
-        0.086
-
-    Note:
-        This is a theoretical guideline. In practice:
-        - For IPF-matching: use lr < 0.5
-        - For faster convergence: use lr 1.0-5.0
-        - Monitor loss and adjust as needed
+        A heuristic rate between 0.01 and 5.0.
     """
+    from ._utils import validate_count
+
+    validate_count(n_observations, "n_observations")
+    validate_count(n_features, "n_features")
     if n_observations <= 1:
         return 1.0
 
-    # From mirror descent regret bounds:
-    # η* = sqrt(2 * D / (T * G^2))
-    # where D is diameter of domain (log(n_observations) for simplex)
-    # and G is gradient bound (depends on n_features)
-
-    # Simplified heuristic that works well empirically
     log_n = np.log(n_observations)
     eta = np.sqrt(2 * log_n / n_observations)
 

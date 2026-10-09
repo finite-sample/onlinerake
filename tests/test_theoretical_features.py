@@ -9,8 +9,6 @@ from onlinerake.convergence import (
     RobbinsMonroVerification,
     analyze_convergence,
     estimate_lipschitz_constant,
-    mwu_convergence_analysis,
-    theoretical_convergence_bound,
     verify_convergence_conditions,
     verify_robbins_monro,
 )
@@ -141,50 +139,6 @@ class TestConvergenceAnalysis:
         assert "checks" in result
         assert "recommendations" in result
         assert result["overall_status"] in ["PASS", "WARN", "FAIL"]
-
-
-class TestTheoreticalBounds:
-    """Test theoretical convergence bound computations."""
-
-    def test_polynomial_bounds(self):
-        """Polynomial schedule should return valid bounds."""
-        bounds = theoretical_convergence_bound(
-            n_features=4,
-            n_observations=1000,
-            learning_rate_schedule="polynomial",
-            initial_lr=5.0,
-            power=0.6,
-        )
-
-        assert "convergence_rate" in bounds
-        assert "expected_loss_bound" in bounds
-        assert bounds["satisfies_robbins_monro"] is True
-        assert bounds["expected_loss_bound"] > 0
-
-    def test_constant_bounds(self):
-        """Constant schedule should indicate bounded suboptimality."""
-        bounds = theoretical_convergence_bound(
-            n_features=4,
-            n_observations=1000,
-            learning_rate_schedule="constant",
-            initial_lr=5.0,
-        )
-
-        assert bounds["satisfies_robbins_monro"] is False
-        assert "suboptimality" in bounds["convergence_rate"].lower()
-
-    def test_mwu_convergence_analysis(self):
-        """MWU-specific analysis should return valid results."""
-        result = mwu_convergence_analysis(
-            n_features=4,
-            n_observations=1000,
-            learning_rate=1.0,
-        )
-
-        assert "algorithm" in result
-        assert "regret_bound" in result
-        assert "optimal_learning_rate" in result
-        assert result["regret_bound"] > 0
 
 
 class TestInfeasibilityHandling:
@@ -507,7 +461,12 @@ class TestIntegrationConvergenceAndInfeasibility:
         assert len(margin_calibration(raker)) > 0
 
         conditions = verify_convergence_conditions(raker)
-        assert conditions["overall_status"] in ["PASS", "WARN"]
+        assert conditions["overall_status"] == "FAIL"
+        stability = conditions["checks"]["weight_stability"]
+        assert stability["status"] == "FAIL"
+        assert stability["weight_ratio"] == pytest.approx(
+            raker.weights.max() / raker.weights.min()
+        )
 
 
 class TestMWUSpecificTheory:
@@ -525,18 +484,6 @@ class TestMWUSpecificTheory:
 
         assert isinstance(conv, ConvergenceAnalysis)
         assert np.isfinite(conv.lipschitz_constant)
-
-    def test_mwu_theoretical_bounds(self):
-        """MWU theoretical analysis should be consistent."""
-        result = mwu_convergence_analysis(
-            n_features=4,
-            n_observations=1000,
-            learning_rate=1.0,
-        )
-
-        theoretical_opt_lr = result["optimal_learning_rate"]
-        assert theoretical_opt_lr > 0
-        assert theoretical_opt_lr < 10
 
 
 if __name__ == "__main__":
