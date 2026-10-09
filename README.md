@@ -44,7 +44,14 @@ targets = Targets(
 # Create raker
 raker = OnlineRakingSGD(targets, learning_rate=5.0)
 
-# Process observations as they arrive
+survey_stream = [
+    {"female": 1, "college": 0, "age_65_plus": 0},
+    {"female": 0, "college": 1, "age_65_plus": 1},
+    {"female": 1, "college": 1, "age_65_plus": 0},
+    {"female": 0, "college": 0, "age_65_plus": 0},
+]
+
+# Replace this list with your incoming responses.
 for response in survey_stream:
     raker.partial_fit(response)
 
@@ -58,18 +65,20 @@ weights = raker.weights
 
 ## Which Algorithm?
 
-| Use Case | Algorithm | Learning Rate |
-|----------|-----------|---------------|
-| **Most cases** | `OnlineRakingSGD` | 5.0 |
-| **Smoother weights, higher ESS** | `OnlineRakingSGD` | 2.0-5.0 |
-| **IPF-like multiplicative updates** | `OnlineRakingMWU` | 0.5-1.0 |
+| Update | Algorithm | Default learning rate |
+|--------|-----------|-----------------------|
+| Additive weight adjustments | `OnlineRakingSGD` | 5.0 |
+| Multiplicative weight adjustments | `OnlineRakingMWU` | 1.0 |
 
-Both online methods initialize arriving rows at weight one; unequal design weights
-are not an input to either class. MWU uses a multiplicative update of squared
-moment loss. It does not guarantee the KL-minimizing batch entropy-balancing
-weights. `BatchIPF` is the batch reference for binary targets; continuous targets
-are supported by the online methods. Learning rates need evaluation on the
-intended data, particularly when continuous features use different units.
+Both methods accept records one at a time and initialize each new weight at one.
+Unequal starting weights are not supported. Each method takes a fixed number of
+steps toward the target means, so always inspect the remaining error. The
+multiplicative method need not choose the same weights as a method that fits the
+whole dataset at once. `BatchIPF` provides that comparison for binary targets.
+
+Learning rates need evaluation on the intended data, particularly when continuous
+features use different units. Better target balance can require more unequal
+weights, reducing effective sample size.
 
 ## Performance
 
@@ -83,12 +92,12 @@ establish improved outcome estimates or a general performance guarantee.
 
 ## Features
 
-### Continuous Covariates (v1.3.0)
+### Continuous Covariates
 
 Target means instead of proportions:
 
 ```python
-targets = Targets(
+continuous_targets = Targets(
     age=(42.0, "mean"),  # Target mean age = 42
     income=(55000, "mean"),  # Target mean income = $55,000
     female=0.51,  # Binary: 51% female
@@ -104,7 +113,7 @@ from onlinerake import OnlineRakingSGD, Targets, PolynomialDecayLR
 from onlinerake.convergence import verify_robbins_monro
 
 schedule = PolynomialDecayLR(initial_lr=10.0, power=0.6)
-raker = OnlineRakingSGD(targets, learning_rate=schedule)
+scheduled_raker = OnlineRakingSGD(targets, learning_rate=schedule)
 
 # Verify Robbins-Monro conditions (analytical for known schedules)
 result = verify_robbins_monro(schedule)
@@ -131,9 +140,9 @@ heuristic.
 ```python
 from onlinerake import check_target_feasibility, compute_design_effect
 
-# Check if targets are achievable with your data
+# Screen for missing support; this does not prove joint feasibility
 feasibility = check_target_feasibility(raker)
-print(f"Feasible: {feasibility.is_feasible}")
+print(f"Passes support screen: {feasibility.is_feasible}")
 
 # Measure weighting efficiency
 deff = compute_design_effect(raker)
@@ -148,9 +157,9 @@ Compare streaming results against traditional IPF:
 from onlinerake import BatchIPF
 
 batch_raker = BatchIPF(targets)
-batch_raker.fit(all_observations)
+batch_raker.fit(survey_stream)
 
-print(f"Online loss: {online_raker.loss:.6f}")
+print(f"Online loss: {raker.loss:.6f}")
 print(f"Batch loss: {batch_raker.loss:.6f}")
 ```
 
@@ -182,6 +191,12 @@ print(f"Batch loss: {batch_raker.loss:.6f}")
 | `max_weight` | 100.0 | Maximum allowed weight |
 | `n_sgd_steps` | 3 | Gradient steps per observation |
 | `convergence_window` | 20 | Minimum observations before reporting convergence |
+
+## Upgrading from 2.0.0
+
+See the [3.0.0 upgrade notes](https://github.com/finite-sample/onlinerake/blob/main/CHANGELOG.md)
+for removed bound helpers, the renamed learning-rate heuristic, changed decay
+floors, and corrected convergence reporting.
 
 ## Installation
 
@@ -225,7 +240,6 @@ If you use this package in research, please cite:
   author = {Sood, Gaurav},
   title = {onlinerake: Streaming Survey Raking},
   url = {https://github.com/finite-sample/onlinerake},
-  version = {1.3.0},
   year = {2026}
 }
 ```
@@ -236,7 +250,7 @@ MIT
 
 ## Implementation audit
 
-See [the software audit](docs/software-audit.md) for reproduced defects, regression
+See [the software audit](https://finite-sample.github.io/onlinerake/software-audit.html) for reproduced defects, regression
 checks, and the relationship to the retired `adaptive-eb` prototype. The historical
 manuscript in `ms/` describes an update that changes only the newest row and reports
 O(Kp) cost; it is not documentation of this implementation and its performance and

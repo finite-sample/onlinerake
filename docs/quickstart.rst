@@ -65,13 +65,12 @@ Algorithm Choice
 ----------------
 
 **Use SGD when:**
-- You want the most accurate margin tracking
+- You prefer additive weight adjustments
 - Smooth weight trajectories are important
 - You can tune learning rates appropriately
 
 **Use MWU when:**
 - You prefer multiplicative (percentage-based) adjustments
-- You want weight distributions similar to classic IPF
 - You want multiplicative updates with explicit weight bounds
 
 Parameter Tuning
@@ -86,7 +85,6 @@ Parameter Tuning
 - ``max_weight``: Prevents runaway weights (default: 100.0)
 
 **Update Steps**
-- ``n_sgd_steps`` (SGD): More steps = smoother convergence (default: 3)
 - ``n_sgd_steps`` (both methods): More steps = more aggressive updates (default: 3)
 
 Next Steps
