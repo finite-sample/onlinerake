@@ -1,45 +1,62 @@
 # Changelog
 
+## [3.0.0] - 2026-10-09
 
-## Unreleased
+Online calibration now reports whether the current sample meets its targets.
+A stalled fit no longer counts as converged, and new arrivals can reset the
+convergence flag. This is a major release because it removes unsupported public
+bound APIs and changes the learning-rate defaults.
 
-- Keep weight-bound warnings separate from target support checks, handle empty
-  incremental IPF input, and make docstring examples independently executable.
-- Add a reproducible MWU streaming example reporting calibration improvement and
-  effective sample size under stationary bias and changing sampling patterns.
+### Upgrade from 2.0.0
 
-- Correct convergence reporting: online fits require current squared moment loss
-  within tolerance and can lose convergence after arrivals; IPF requires actual
-  margin accuracy, including its incremental path.
-- Reject invalid binary observations, nonfinite continuous targets/observations,
-  and nonfinite or malformed core configuration before corrupting active weights.
-- Evaluate bounded MWU updates in log space, and report current weight statistics.
-- Account for positive floors in Robbins-Monro checks; decay schedules default to
-  zero floors. Remove unsupported `theoretical_convergence_bound` and
-  `mwu_convergence_analysis` certificates. Rename `optimal_mwu_learning_rate` to
-  `suggest_mwu_learning_rate` to describe its heuristic status.
-- Correct online-vs-batch EB, base-weight support, parameter, and complexity claims.
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Changed
-- Development tooling moved to the py-canon shared standard: one `CI` workflow
-  (lint, matrix tests with a 89% coverage floor, wheel install, workflow
-  security, dependency review), shared docs and release workflows, ruff in
-  place of mypy, and `docs/conf.py` reduced to the fleet's Sphinx config plus
-  this package's notebook support.
-- Docs now execute the three example notebooks during the Sphinx build, with
-  warnings treated as errors, so a broken example fails CI.
+- Replace `optimal_mwu_learning_rate` with `suggest_mwu_learning_rate`. The
+  returned rate is a starting point for tuning, not an optimality guarantee.
+- Remove calls to `theoretical_convergence_bound` and
+  `mwu_convergence_analysis`. Inspect actual margin errors and weight variation;
+  no numerical regret or loss certificate replaces these functions.
+- `PolynomialDecayLR`, `InverseTimeDecayLR`, and `robbins_monro_schedule` now
+  default to `min_lr=0.0`. Set a positive floor explicitly if desired; the
+  Robbins-Monro check correctly reports that it fails square summability.
+- Online `converged` means current squared margin error is at most `1e-6`,
+  after `convergence_window` observations. `check_convergence(tolerance=...)`
+  checks another threshold. IPF uses maximum absolute margin error instead.
+- `verify_convergence_conditions` reports `inverse_local_curvature` in its
+  `lipschitz` check instead of `max_safe_lr`. This local diagnostic is not a
+  proven safe learning-rate bound.
+- Invalid binary values, nonfinite inputs, and malformed core settings now
+  raise `ValueError` instead of producing silently incorrect results.
+- Development and documentation dependencies use dependency groups. After
+  cloning, run `uv sync --all-groups`; use `pip install onlinerake` for runtime use.
 
 ### Fixed
-- `OnlineRakingMWU.partial_fit` had a numpy-style docstring in a Google-style
-  package; its argument is now documented where the tooling looks for it.
-- `docs/quickstart.rst` linked to two pages that do not exist.
+
+- Model-assisted calibration validates scheduled rates before recording a row,
+  so a rejected observation cannot contaminate later estimates.
+- Both online methods and both IPF fitting paths check actual calibration error.
+- MWU bounds updated log weights before exponentiation to prevent intermediate
+  overflow. Weight statistics always describe the current fit.
+- Weights reaching their bounds produce tuning warnings rather than proving
+  target infeasibility. The feasibility helper is a marginal support screen.
+- Empty incremental IPF input no longer divides by zero.
+- Curvature diagnostics preserve the caller's random state and restore weights
+  even when a diagnostic calculation raises an exception.
+- Docstring examples include their imports. Documentation describes retained-data
+  costs, supported inputs, and the differences between online and full-sample fits.
+
+### Added
+
+- A streaming MWU example reports calibration improvement and effective sample
+  size over stationary bias, changing sampling patterns, and continuous features.
+- Regression checks cover infeasible targets, drift, bounded updates, invalid
+  inputs, current statistics, and independent gradient/IPF reference calculations.
+
+### Development
+
+- Shared CI checks lint, types, Python 3.12/3.14 tests, coverage, installed wheels,
+  workflow security, and dependencies. Sphinx executes all three notebooks and
+  treats warnings as errors.
+- Release publication uses the existing tag-triggered PyPI trusted-publishing
+  workflow. No new credentials or publication target are required.
 
 ## [2.0.0] - 2026-08-09
 

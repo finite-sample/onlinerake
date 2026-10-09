@@ -64,7 +64,7 @@ Master the monitoring and diagnostic capabilities for production deployments.
 🎯 Quick Start Guide
 --------------------
 
-1. **Install dependencies**: ``pip install onlinerake[docs]``
+1. **Install dependencies in the cloned repository**: ``uv sync --all-groups``
 2. **Start with Getting Started**: Master the basics first
 3. **Compare algorithms**: Understand when to use SGD vs MWU  
 4. **Learn diagnostics**: Essential for production deployments

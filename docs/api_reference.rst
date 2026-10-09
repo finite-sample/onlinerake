@@ -1,7 +1,7 @@
 API Reference
 =============
 
-This page provides detailed documentation for all public classes and functions
+This page provides detailed documentation for the core calibration classes
 in the ``onlinerake`` package.
 
 Core Classes
@@ -16,3 +16,4 @@ Core Classes
    Targets
    OnlineRakingSGD
    OnlineRakingMWU
+   BatchIPF
