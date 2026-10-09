@@ -7,10 +7,9 @@ The weights are adjusted so that the weighted proportions of each feature
 track the target population proportions using stochastic gradient descent (SGD)
 on a squared-error loss defined on the margins.
 
-Unlike classic batch raking or iterative proportional fitting (IPF), this
-implementation works in a streaming fashion: it does not revisit past
-observations except through their contribution to the cumulative weight totals.
-Each update runs in O(k) time for k features (independent of n observations).
+Each arrival triggers a fixed number of updates to all accumulated weights.
+The implementation retains and revisits past observations: for n rows, d
+features, and K steps, each arrival costs O(n*d*K) time and uses O(n*d) memory.
 
 The class follows the scikit-learn ``partial_fit`` API pattern.
 """
@@ -18,10 +17,18 @@ The class follows the scikit-learn ``partial_fit`` API pattern.
 from __future__ import annotations
 
 import logging
+from numbers import Real
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
+
+from ._utils import (
+    feature_value,
+    validate_count,
+    validate_non_negative,
+    validate_positive,
+)
 
 if TYPE_CHECKING:
     from .learning_rate import LearningRateSchedule
@@ -56,7 +63,7 @@ class OnlineRakingSGD:
             Default: 20.
         compute_weight_stats: Control weight statistics computation.
             If True: compute every observation.
-            If False: never compute (best performance).
+            If False: do not compute automatically; the property remains available.
             If int k: compute every k observations. Default: False.
         max_history: Maximum historical states to retain. None for unlimited
             (may cause memory issues). Default: 1000.
@@ -120,24 +127,25 @@ class OnlineRakingSGD:
         track_kl_divergence: bool = False,
     ) -> None:
         # Handle learning rate - can be float or schedule
-        if isinstance(learning_rate, (int, float)):
-            if learning_rate <= 0:
-                raise ValueError("learning_rate must be positive")
+        if isinstance(learning_rate, Real):
+            validate_positive(float(learning_rate), "learning_rate")
             self._lr_schedule = None
             self._base_learning_rate = float(learning_rate)
         else:
-            # Assume it's a LearningRateSchedule
+            if not callable(learning_rate):
+                raise ValueError("learning_rate must be numeric or a schedule")
             self._lr_schedule = learning_rate
             self._base_learning_rate = learning_rate(1)
+            validate_positive(self._base_learning_rate, "learning_rate")
 
-        if min_weight <= 0:
-            raise ValueError("min_weight must be strictly positive")
+        validate_positive(min_weight, "min_weight")
+        validate_positive(max_weight, "max_weight")
         if max_weight <= min_weight:
             raise ValueError("max_weight must exceed min_weight")
-        if n_sgd_steps < 1:
-            raise ValueError("n_sgd_steps must be a positive integer")
-        if convergence_window < 1:
-            raise ValueError("convergence_window must be a positive integer")
+        validate_count(n_sgd_steps, "n_sgd_steps")
+        validate_count(convergence_window, "convergence_window")
+        if max_history is not None:
+            validate_count(max_history, "max_history")
         if not isinstance(compute_weight_stats, bool) and not isinstance(
             compute_weight_stats, int
         ):
@@ -208,9 +216,7 @@ class OnlineRakingSGD:
     @property
     def current_learning_rate(self) -> float:
         """Get current learning rate (may vary if using a schedule)."""
-        if self._lr_schedule is not None and self._n_obs > 0:
-            return self._lr_schedule(self._n_obs)
-        return self._base_learning_rate
+        return self.learning_rate
 
     @property
     def learning_rate_history(self) -> list[float]:
@@ -230,7 +236,8 @@ class OnlineRakingSGD:
             Array of shape (n_obs,) containing current weights.
 
         Examples:
-            >>> raker = OnlineRakingSGD(Targets(feature_a=0.5, feature_b=0.5))
+            >>> from onlinerake import Targets
+        >>> raker = OnlineRakingSGD(Targets(feature_a=0.5, feature_b=0.5))
             >>> raker.partial_fit({"feature_a": 1, "feature_b": 0})
             >>> raker.weights.shape
             (1,)
@@ -257,6 +264,7 @@ class OnlineRakingSGD:
             Returns NaN for all features if no observations processed.
 
         Examples:
+            >>> from onlinerake import Targets
             >>> targets = Targets(a=0.5, b=0.3)
             >>> raker = OnlineRakingSGD(targets)
             >>> raker.partial_fit({'a': 1, 'b': 0})
@@ -316,6 +324,7 @@ class OnlineRakingSGD:
             NaN before any observation, not zero: an unfitted raker is not
             perfectly calibrated, it is uncalibrated.
 
+            >>> from onlinerake import Targets
             >>> raker = OnlineRakingSGD(Targets(female=0.5))
             >>> import math
             >>> math.isnan(raker.loss)
@@ -408,9 +417,9 @@ class OnlineRakingSGD:
             List of KL divergence values. Empty if tracking disabled.
 
         Note:
-            MWU minimizes KL divergence from previous weights at each step,
-            so this tracks how much the distribution changes per update.
-            Smaller values indicate the algorithm is stabilizing.
+            This records the change from the augmented pre-update weights to
+            the post-update weights. It is not KL distance from the batch EB
+            solution. Smaller values indicate less movement in this update.
         """
         return self._kl_history.copy()
 
@@ -426,9 +435,8 @@ class OnlineRakingSGD:
             or no updates processed.
 
         Note:
-            Useful for comparing algorithms: MWU should accumulate less
-            KL divergence than SGD when starting from uniform weights,
-            since MWU explicitly minimizes KL.
+            This is a descriptive sum. Neither a smaller value than SGD nor
+            convergence to batch entropy-balancing weights is guaranteed.
         """
         if not self._kl_history:
             return 0.0
@@ -443,17 +451,11 @@ class OnlineRakingSGD:
                 np.nan,
             )
 
-        # Check if we should use cached values
-        if isinstance(self.compute_weight_stats, bool):
-            if not self.compute_weight_stats and self._cached_weight_stats is not None:
-                return self._cached_weight_stats
-        elif (
-            isinstance(self.compute_weight_stats, int)
-            and (self._n_obs - self._weight_stats_computed_at)
-            < self.compute_weight_stats
-            and self._cached_weight_stats is not None
+        if (
+            self._cached_weight_stats is not None
+            and self._weight_stats_computed_at == self._n_obs
         ):
-            return self._cached_weight_stats
+            return self._cached_weight_stats.copy()
 
         w = self._weights[: self._n_obs]
         q25, median, q75 = np.percentile(w, [25, 50, 75])
@@ -478,7 +480,7 @@ class OnlineRakingSGD:
         self._cached_weight_stats = stats
         self._weight_stats_computed_at = self._n_obs
 
-        return stats
+        return stats.copy()
 
     def detect_oscillation(self, threshold: float = 0.1) -> bool:
         """Detect if loss is oscillating rather than converging.
@@ -509,65 +511,45 @@ class OnlineRakingSGD:
         return False
 
     def check_convergence(self, tolerance: float = 1e-6) -> bool:
-        """Check if algorithm has converged based on loss stability.
+        """Check the current squared moment error against an absolute tolerance.
 
         Args:
-            tolerance: Convergence tolerance. Smaller values require more
-                stable loss. Default: 1e-6.
+            tolerance: Nonnegative threshold on the sum of squared margin errors.
 
         Returns:
-            True if convergence detected, False otherwise.
-
-        Note:
-            Convergence is detected when loss is near zero or when relative
-            standard deviation of recent losses is below tolerance.
+            Whether the current loss meets tolerance after convergence_window
+            observations. A later observation can invalidate convergence.
         """
-        if self._converged or len(self._loss_history) < self.convergence_window:
-            return self._converged
-
-        recent_losses = self._loss_history[-self.convergence_window :]
-        mean_loss = float(np.mean(recent_losses))
-
-        # First check if loss is essentially zero
-        if mean_loss <= tolerance:
-            if not self._converged:
-                self._converged = True
-                self._convergence_step = self._n_obs
-                if self.verbose:
-                    _LOGGER.info(
-                        "Convergence detected at observation %d (loss ~ 0)",
-                        self._n_obs,
-                    )
-            return True
-
-        # Then check relative stability for non-zero loss
-        loss_std = float(np.std(recent_losses))
-        # Avoid division by very small mean_loss
-        if mean_loss > tolerance:
-            relative_std = loss_std / mean_loss
-            if relative_std < tolerance:
-                if not self._converged:
-                    self._converged = True
-                    self._convergence_step = self._n_obs
-                    if self.verbose:
-                        _LOGGER.info(
-                            "Convergence detected at observation %d", self._n_obs
-                        )
-                return True
-
-        return False
+        validate_non_negative(tolerance, "tolerance")
+        meets = self._n_obs >= self.convergence_window and self.loss <= tolerance
+        if meets and not self._converged:
+            self._convergence_step = self._n_obs
+        elif not meets:
+            self._convergence_step = None
+        self._converged = bool(meets)
+        if self.history:
+            self.history[-1]["converged"] = self._converged
+        return self._converged
 
     # ------------------------------------------------------------------
     # Core logic
     # ------------------------------------------------------------------
-    def _get_current_learning_rate(self) -> float:
+    def _get_current_learning_rate(
+        self, observation_number: int | None = None
+    ) -> float:
         """Get the learning rate for the current observation.
+
+        Args:
+            observation_number: Next row number, or the current count when omitted.
 
         Returns:
             Current learning rate, either fixed or from schedule.
         """
         if self._lr_schedule is not None:
-            lr = self._lr_schedule(self._n_obs)
+            lr = self._lr_schedule(
+                self._n_obs if observation_number is None else observation_number
+            )
+            validate_positive(lr, "learning_rate")
             self.learning_rate = lr  # Update for inspection
             return lr
         return self._base_learning_rate
@@ -668,6 +650,12 @@ class OnlineRakingSGD:
         if gradient_norm is not None:
             self._gradient_norms.append(gradient_norm)
 
+        collect_stats = self.compute_weight_stats is True or (
+            isinstance(self.compute_weight_stats, int)
+            and not isinstance(self.compute_weight_stats, bool)
+            and self._n_obs % self.compute_weight_stats == 0
+        )
+        stats = self.weight_distribution_stats if collect_stats else {}
         state = {
             "n_obs": self._n_obs,
             "loss": current_loss,
@@ -675,7 +663,7 @@ class OnlineRakingSGD:
             "weighted_margins": self.margins,
             "raw_margins": self.raw_margins,
             "ess": self.effective_sample_size,
-            "weight_stats": self.weight_distribution_stats,
+            "weight_stats": stats,
             "gradient_norm": gradient_norm if gradient_norm is not None else np.nan,
             "loss_moving_avg": self.loss_moving_average,
             "converged": self.converged,
@@ -690,8 +678,12 @@ class OnlineRakingSGD:
             self.history = self.history[-self.max_history :]
 
         # Check convergence if tracking is enabled
-        if self.track_convergence and not self._converged:
+        if self.track_convergence:
             self.check_convergence()
+        else:
+            self._converged = False
+            self._convergence_step = None
+            self.history[-1]["converged"] = False
 
     def _create_nan_margins(self) -> dict[str, float]:
         """Create margins dict with NaN for all features.
@@ -738,10 +730,9 @@ class OnlineRakingSGD:
         for i, name in enumerate(self._feature_names):
             val = obs.get(name, 0) if isinstance(obs, dict) else getattr(obs, name, 0)
 
-            if self.targets.is_binary(name):
-                feature_values[i] = 1.0 if val else 0.0
-            else:
-                feature_values[i] = float(val)
+            feature_values[i] = feature_value(
+                val, name, binary=self.targets.is_binary(name)
+            )
 
         return feature_values
 
@@ -777,6 +768,7 @@ class OnlineRakingSGD:
             None. Updates internal state in place.
 
         Examples:
+            >>> from onlinerake import Targets
             >>> # Binary features only
             >>> targets = Targets(owns_car=0.4, is_subscriber=0.2)
             >>> raker = OnlineRakingSGD(targets)
@@ -805,6 +797,8 @@ class OnlineRakingSGD:
         # Extract feature values using helper
         feature_values = self._extract_feature_values(obs)
 
+        current_lr = self._get_current_learning_rate(self._n_obs + 1)
+
         # Store the observation
         self._features[self._n_obs] = feature_values
         self._weights[self._n_obs] = 1.0
@@ -814,9 +808,6 @@ class OnlineRakingSGD:
         pre_update_weights: np.ndarray | None = None
         if self.track_kl_divergence:
             pre_update_weights = self._weights[: self._n_obs].copy()
-
-        # Get current learning rate (may be from schedule)
-        current_lr = self._get_current_learning_rate()
 
         # perform n_sgd_steps updates
         final_gradient_norm = 0.0
@@ -868,6 +859,7 @@ class OnlineRakingSGD:
             runs sequentially; here is that claim as an assertion -- batch and
             one-at-a-time give bit-identical weights.
 
+            >>> from onlinerake import Targets
             >>> observations = [
             ...     {"feature_a": 1, "feature_b": 0},
             ...     {"feature_a": 0, "feature_b": 1},

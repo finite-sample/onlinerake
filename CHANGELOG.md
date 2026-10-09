@@ -1,5 +1,25 @@
 # Changelog
 
+
+## Unreleased
+
+- Keep weight-bound warnings separate from target support checks, handle empty
+  incremental IPF input, and make docstring examples independently executable.
+- Add a reproducible MWU streaming example reporting calibration improvement and
+  effective sample size under stationary bias and changing sampling patterns.
+
+- Correct convergence reporting: online fits require current squared moment loss
+  within tolerance and can lose convergence after arrivals; IPF requires actual
+  margin accuracy, including its incremental path.
+- Reject invalid binary observations, nonfinite continuous targets/observations,
+  and nonfinite or malformed core configuration before corrupting active weights.
+- Evaluate bounded MWU updates in log space, and report current weight statistics.
+- Account for positive floors in Robbins-Monro checks; decay schedules default to
+  zero floors. Remove unsupported `theoretical_convergence_bound` and
+  `mwu_convergence_analysis` certificates. Rename `optimal_mwu_learning_rate` to
+  `suggest_mwu_learning_rate` to describe its heuristic status.
+- Correct online-vs-batch EB, base-weight support, parameter, and complexity claims.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

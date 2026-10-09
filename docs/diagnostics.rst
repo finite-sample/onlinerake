@@ -237,12 +237,12 @@ For known schedule types (``ConstantLR``, ``PolynomialDecayLR``, ``InverseTimeDe
 
    print(result.condition_1_satisfied)  # True
    print(result.condition_2_satisfied)  # True
-   print(result.explanation)  # Mathematical proof
+   print(result.analysis_notes)
 
 **Schedule-specific behavior:**
 
 - ``ConstantLR``: Condition 1 satisfied (divergent), Condition 2 fails (constant series)
-- ``PolynomialDecayLR(power=p)``: Both satisfied when 0.5 < p ≤ 1.0
+- ``PolynomialDecayLR(power=p)``: Both satisfied when 0.5 < p ≤ 1.0 and min_lr = 0
 - ``InverseTimeDecayLR``: Both satisfied (1/t decay)
 
 **Custom Schedules**

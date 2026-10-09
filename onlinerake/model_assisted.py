@@ -54,6 +54,7 @@ class ModelAssistedTargets:
             probability of voting is 0.48.
 
     Examples:
+        >>> from onlinerake import Targets
         >>> targets = ModelAssistedTargets(
         ...     demographic_targets=Targets(female=0.51, college=0.32),
         ...     prediction_targets={"vote_prob": 0.48},
@@ -127,6 +128,7 @@ class ModelAssistedRaker(OnlineRakingSGD):
         Any object with a ``predict`` method serves; wrap a foreign model in
         :class:`~onlinerake.models.ExternalModelWrapper` when its API differs.
 
+        >>> from onlinerake import Targets
         >>> targets = ModelAssistedTargets(
         ...     demographic_targets=Targets(female=0.51, college=0.32),
         ...     prediction_targets={"pred": 0.48},

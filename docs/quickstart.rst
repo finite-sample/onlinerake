@@ -72,7 +72,7 @@ Algorithm Choice
 **Use MWU when:**
 - You prefer multiplicative (percentage-based) adjustments
 - You want weight distributions similar to classic IPF
-- You're starting from unequal base weights
+- You want multiplicative updates with explicit weight bounds
 
 Parameter Tuning
 ----------------
@@ -87,7 +87,7 @@ Parameter Tuning
 
 **Update Steps**
 - ``n_sgd_steps`` (SGD): More steps = smoother convergence (default: 3)
-- ``n_steps`` (MWU): More steps = more aggressive updates (default: 3)
+- ``n_sgd_steps`` (both methods): More steps = more aggressive updates (default: 3)
 
 Next Steps
 ----------

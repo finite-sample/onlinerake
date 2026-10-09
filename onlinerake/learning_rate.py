@@ -58,7 +58,7 @@ class ConstantLR(LearningRateSchedule):
 class InverseTimeDecayLR(LearningRateSchedule):
     """Inverse time decay: η_t = η_0 / (1 + decay * t).
 
-    Satisfies Robbins-Monro when decay > 0:
+    Satisfies Robbins-Monro when decay > 0 and min_lr == 0:
     - Σ η_t = Σ η_0/(1 + decay*t) → ∞ (harmonic series)
     - Σ η_t² = Σ η_0²/(1 + decay*t)² < ∞
 
@@ -72,7 +72,7 @@ class InverseTimeDecayLR(LearningRateSchedule):
         self,
         initial_lr: float = 5.0,
         decay: float = 0.01,
-        min_lr: float = 0.01,
+        min_lr: float = 0.0,
     ) -> None:
         validate_positive(initial_lr, "initial_lr")
         validate_non_negative(decay, "decay")
@@ -105,8 +105,8 @@ class PolynomialDecayLR(LearningRateSchedule):
     - α ≤ 1 ensures Σ η_t = ∞
 
     The classic choice is α = 1 (1/t decay), but α = 0.6-0.7 often works
-    better in practice, providing faster initial progress while still
-    guaranteeing convergence.
+    better in practice. A positive min_lr floor violates square summability;
+    these series conditions do not by themselves guarantee calibration.
 
     Args:
         initial_lr: Initial learning rate η_0.
@@ -118,7 +118,7 @@ class PolynomialDecayLR(LearningRateSchedule):
         self,
         initial_lr: float = 5.0,
         power: float = 0.6,
-        min_lr: float = 0.01,
+        min_lr: float = 0.0,
     ) -> None:
         validate_positive(initial_lr, "initial_lr")
         if not (0.5 < power <= 1.0):
@@ -225,12 +225,14 @@ class AdaptiveLR(LearningRateSchedule):
 def robbins_monro_schedule(
     initial_lr: float = 5.0,
     power: float = 0.6,
-    min_lr: float = 0.01,
+    min_lr: float = 0.0,
 ) -> PolynomialDecayLR:
     """Create a Robbins-Monro compliant learning rate schedule.
 
     This is a convenience function that creates a polynomial decay
-    schedule with parameters that guarantee theoretical convergence.
+    schedule whose rates satisfy the two series conditions when min_lr is zero.
+    A positive floor breaks square summability. Neither case certifies that a
+    growing, clipped raker will meet its population targets.
 
     Args:
         initial_lr: Initial learning rate. Higher values for faster

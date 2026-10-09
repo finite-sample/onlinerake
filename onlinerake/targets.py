@@ -18,6 +18,7 @@ measurements like age or income, or any other indicators.
 
 from __future__ import annotations
 
+from math import isfinite
 from typing import Any
 
 
@@ -97,6 +98,8 @@ class Targets:
                         f"Target value for '{name}' must be numeric, "
                         f"got {type(target_value).__name__}"
                     )
+                if not isfinite(target_value):
+                    raise ValueError(f"Target value for '{name}' must be finite")
                 if type_spec != "mean":
                     raise ValueError(
                         f"Continuous target type for '{name}' must be 'mean', "

@@ -11,14 +11,19 @@
 
 You're collecting survey responses or observational data one record at a time. Your sample doesn't match population demographics—too many young respondents, too few from certain regions. Traditional weighting methods (raking/IPF) require reprocessing the entire dataset whenever a new response arrives.
 
-**onlinerake** updates weights incrementally as each observation streams in, keeping weighted margins aligned with population targets in real time.
+**onlinerake** updates weights as observations arrive, reducing squared error
+between weighted margins and population targets. Each update revisits all retained
+observations: memory is O(n × d), work per arrival is O(n × d × n_sgd_steps),
+and total work grows quadratically with stream length for fixed feature count.
+Check the remaining margin errors; a finite number of updates need not balance
+all targets.
 
 ## When to Use This
 
 - **Online surveys** where responses arrive continuously
 - **A/B tests** that need demographic balance during collection
 - **Passive data collection** (app usage, sensor data) requiring real-time calibration
-- **Any streaming scenario** where batch reweighting is too slow or impractical
+- **Moderate streams** where updating retained weights after every arrival is affordable
 
 ## Quick Start
 
@@ -48,7 +53,7 @@ for response in survey_stream:
     print(f"Effective sample size: {raker.effective_sample_size:.0f}")
 
 # Get final weights
-weights = raker.weights[: raker.n_obs]
+weights = raker.weights
 ```
 
 ## Which Algorithm?
@@ -58,21 +63,23 @@ weights = raker.weights[: raker.n_obs]
 | **Most cases** | `OnlineRakingSGD` | 5.0 |
 | **Smoother weights, higher ESS** | `OnlineRakingSGD` | 2.0-5.0 |
 | **IPF-like multiplicative updates** | `OnlineRakingMWU` | 0.5-1.0 |
-| **Starting from unequal base weights** | `OnlineRakingMWU` | 0.5-1.0 |
 
-**Recommendation:** Start with `OnlineRakingSGD(targets, learning_rate=5.0)`. It converges faster, maintains higher effective sample size, and handles most scenarios well.
+Both online methods initialize arriving rows at weight one; unequal design weights
+are not an input to either class. MWU uses a multiplicative update of squared
+moment loss. It does not guarantee the KL-minimizing batch entropy-balancing
+weights. `BatchIPF` is the batch reference for binary targets; continuous targets
+are supported by the online methods. Learning rates need evaluation on the
+intended data, particularly when continuous features use different units.
 
 ## Performance
 
-In simulation studies across linear drift, sudden shift, and oscillating bias scenarios:
-
-| Method | Margin Error Reduction | Effective Sample Size |
-|--------|----------------------|----------------------|
-| SGD | 72-80% | 225-280 (of 300) |
-| MWU | 47-52% | 175-276 (of 300) |
-| Unweighted | baseline | 300 |
-
-SGD consistently outperforms MWU on margin accuracy while maintaining comparable effective sample sizes.
+Run `python examples/streaming_mwu.py` for a reproducible evaluation with 10
+seeds and 500 arrivals per stream. With the default MWU settings, mean squared
+margin error over arrivals 100–500 falls by 83% in the stationary binary case,
+75% after a sampling shift, and 83% with binary and scaled continuous features.
+Mean final effective sample sizes are 292, 383, and 155 out of 500, respectively.
+These simulations measure calibration on the accumulated sample; they do not
+establish improved outcome estimates or a general performance guarantee.
 
 ## Features
 
@@ -90,7 +97,7 @@ targets = Targets(
 
 ### Learning Rate Schedules
 
-For theoretical convergence guarantees:
+To inspect learning-rate summability (not a guarantee of calibration):
 
 ```python
 from onlinerake import OnlineRakingSGD, Targets, PolynomialDecayLR
@@ -105,7 +112,19 @@ print(result.condition_1_satisfied)  # True: Σ η_t = ∞
 print(result.condition_2_satisfied)  # True: Σ η_t² < ∞
 ```
 
-The `verify_robbins_monro()` function provides analytical verification for known schedule types with mathematical proofs.
+`verify_robbins_monro()` checks the two learning-rate series for known schedule
+types. A positive `min_lr` floor fails square summability. These checks do not
+establish convergence for a changing, clipped calibration problem.
+
+`.converged` reports whether current squared moment loss is at most `1e-6` after
+`convergence_window` observations; later data can reset it. For a different loss
+threshold, call `.check_convergence(tolerance=...)`. Batch IPF instead checks the
+maximum absolute margin error against its `tolerance`. A stalled or infeasible
+fit does not count as converged.
+
+Unsupported numerical regret/loss-bound helpers have been removed. The learning
+rate helper is now `suggest_mwu_learning_rate`, explicitly an empirical tuning
+heuristic.
 
 ### Diagnostics
 
@@ -147,7 +166,7 @@ print(f"Batch loss: {batch_raker.loss:.6f}")
 - `.partial_fit(obs)` - Process one observation
 - `.margins` - Current weighted margins (dict)
 - `.loss` - Current squared-error loss
-- `.weights` - Weight array (use `[:raker.n_obs]` to slice)
+- `.weights` - Copy of the active weight array
 - `.effective_sample_size` - ESS accounting for weight variation
 - `.converged` - Whether loss is below tolerance
 
@@ -159,10 +178,10 @@ print(f"Batch loss: {batch_raker.loss:.6f}")
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `learning_rate` | 5.0 (SGD), 1.0 (MWU) | Step size for updates |
-| `min_weight` | 0.1 | Minimum allowed weight |
-| `max_weight` | 10.0 | Maximum allowed weight |
-| `n_steps` | 3 | Gradient steps per observation |
-| `convergence_tol` | 1e-6 | Loss threshold for convergence |
+| `min_weight` | 0.001 | Minimum allowed weight |
+| `max_weight` | 100.0 | Maximum allowed weight |
+| `n_sgd_steps` | 3 | Gradient steps per observation |
+| `convergence_window` | 20 | Minimum observations before reporting convergence |
 
 ## Installation
 
@@ -186,6 +205,7 @@ pytest tests/ -v
 ## Examples
 
 See `examples/` for complete worked examples:
+- `streaming_mwu.py` - Online multiplicative weighting, drift, and the ESS tradeoff
 - `real_survey_example.py` - Basic survey weighting
 - `ab_test_calibration.py` - Balancing treatment/control groups
 - `ad_targeting_calibration.py` - Real-time ad delivery calibration
@@ -213,3 +233,11 @@ If you use this package in research, please cite:
 ## License
 
 MIT
+
+## Implementation audit
+
+See [the software audit](docs/software-audit.md) for reproduced defects, regression
+checks, and the relationship to the retired `adaptive-eb` prototype. The historical
+manuscript in `ms/` describes an update that changes only the newest row and reports
+O(Kp) cost; it is not documentation of this implementation and its performance and
+convergence claims should not be used for this package.

@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from ._utils import feature_value, validate_count, validate_positive
+
 if TYPE_CHECKING:
     from .targets import Targets
 
@@ -25,7 +27,8 @@ class BatchIPF:
 
     IPF (also called raking ratio estimation) iteratively adjusts weights
     to match marginal population totals. This is the gold standard batch
-    method that online raking algorithms should converge to.
+    reference for binary margins. Clipped online algorithms need not produce
+    the same weights.
 
     Args:
         targets: Target population proportions for each feature.
@@ -35,6 +38,7 @@ class BatchIPF:
         max_weight: Upper bound for weights to prevent explosion.
 
     Examples:
+        >>> from onlinerake import Targets
         >>> targets = Targets(female=0.5, college=0.3)
         >>> data = [
         ...     {"female": 1, "college": 1},
@@ -67,12 +71,10 @@ class BatchIPF:
         min_weight: float = 1e-6,
         max_weight: float = 1e6,
     ) -> None:
-        if max_iterations < 1:
-            raise ValueError("max_iterations must be a positive integer")
-        if tolerance <= 0:
-            raise ValueError("tolerance must be positive")
-        if min_weight <= 0:
-            raise ValueError("min_weight must be strictly positive")
+        validate_count(max_iterations, "max_iterations")
+        validate_positive(tolerance, "tolerance")
+        validate_positive(min_weight, "min_weight")
+        validate_positive(max_weight, "max_weight")
         if max_weight <= min_weight:
             raise ValueError("max_weight must exceed min_weight")
 
@@ -173,11 +175,9 @@ class BatchIPF:
                 else:
                     val = getattr(obs, name, 0)
 
-                # Handle binary vs continuous features
-                if self.targets.is_binary(name):
-                    features[i, j] = 1.0 if val else 0.0
-                else:
-                    features[i, j] = float(val)
+                features[i, j] = feature_value(
+                    val, name, binary=self.targets.is_binary(name)
+                )
 
         return features
 
@@ -234,7 +234,7 @@ class BatchIPF:
                 current_margin = weighted_sum / total_w
 
                 # Skip if margin is at extreme (to avoid division issues)
-                if current_margin < 1e-10 or current_margin > 1 - 1e-10:
+                if current_margin <= 0 or current_margin >= 1:
                     continue
 
                 # Compute adjustment factor
@@ -260,7 +260,14 @@ class BatchIPF:
 
             # Check convergence
             new_loss = self.loss
-            if abs(new_loss - current_loss) < self.tolerance:
+            if (
+                self._n_obs
+                and max(
+                    abs(self.margins[name] - self.targets[name])
+                    for name in self._feature_names
+                )
+                <= self.tolerance
+            ):
                 self._converged = True
                 self._loss_history.append(new_loss)
                 break
@@ -324,10 +331,12 @@ class BatchIPF:
                 target = self._target_array[j]
 
                 total_w = self._weights.sum()
+                if total_w <= 0:
+                    continue
                 weighted_sum = (self._weights * feature_col).sum()
                 current_margin = weighted_sum / total_w
 
-                if current_margin < 1e-10 or current_margin > 1 - 1e-10:
+                if current_margin <= 0 or current_margin >= 1:
                     continue
 
                 adjustment_1 = target / current_margin if current_margin > 0 else 1.0
@@ -345,7 +354,14 @@ class BatchIPF:
                 )
 
             new_loss = self.loss
-            if abs(new_loss - current_loss) < self.tolerance:
+            if (
+                self._n_obs
+                and max(
+                    abs(self.margins[name] - self.targets[name])
+                    for name in self._feature_names
+                )
+                <= self.tolerance
+            ):
                 self._converged = True
                 self._loss_history.append(new_loss)
                 break

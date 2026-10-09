@@ -8,11 +8,11 @@ corresponds to a mirror descent step on the Kullback-Leibler
 divergence, which is the natural Bregman divergence for non-negative
 weights.
 
-The resulting updates maintain positivity by construction and tend to
-produce weight distributions more similar to classical raking (IPF)
-weights.  However, overly aggressive learning rates can lead to weight
-explosions or collapses.  Use the optional weight clipping to keep
-weights within reasonable bounds.
+The loss is squared moment mismatch, with entropic update geometry and
+explicit weight bounds. Arriving rows start at weight one, so the path generally
+differs from batch IPF or entropy balancing from a fixed reference distribution.
+All accumulated rows are retained and revisited. Updates are evaluated in log
+space and bounded before exponentiation; large steps can still harm calibration.
 
 The class is a drop-in replacement for
 :class:`~onlinerake.online_raking_sgd.OnlineRakingSGD`; it shares
@@ -25,15 +25,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy import finfo, log
 
 from .online_raking_sgd import OnlineRakingSGD
 
 if TYPE_CHECKING:
     from .learning_rate import LearningRateSchedule
-
-# Safety margin for exponent clipping
-EXPONENT_SAFETY_MARGIN = 0.95
 
 
 class OnlineRakingMWU(OnlineRakingSGD):
@@ -46,8 +42,9 @@ class OnlineRakingMWU(OnlineRakingSGD):
     learning_rate : float, optional
         Step size used in the exponent of the multiplicative update.  A
         typical default is ``learning_rate=1.0``.  The algorithm automatically
-        clips extreme exponents based on the weights dtype to prevent numerical
-        overflow/underflow, making it robust even with very large learning rates.
+        clips updated log weights to the configured bounds before exponentiation.
+        This avoids overflow in the multiplicative step, but large rates may
+        still oscillate or leave substantial moment error.
     min_weight : float, optional
         Lower bound applied to the weights after each update.  This
         prevents weights from collapsing to zero.  Must be positive.
@@ -111,6 +108,8 @@ class OnlineRakingMWU(OnlineRakingSGD):
         # Extract feature values using inherited helper
         feature_values = self._extract_feature_values(obs)
 
+        current_lr = self._get_current_learning_rate(self._n_obs + 1)
+
         # Store the observation
         self._features[self._n_obs] = feature_values
         self._weights[self._n_obs] = 1.0
@@ -121,18 +120,8 @@ class OnlineRakingMWU(OnlineRakingSGD):
         if self.track_kl_divergence:
             pre_update_weights = self._weights[: self._n_obs].copy()
 
-        # MWU steps (entropic mirror descent) with safe exponent clipping
-        max_log = float(log(finfo(self._weights.dtype).max))
-        max_log *= EXPONENT_SAFETY_MARGIN
-
-        # Through the accessor, exactly as the parent does. Reading
-        # `self.learning_rate` directly meant a schedule passed to this class
-        # was accepted, reported by `uses_lr_schedule`, and then never stepped:
-        # the rate stayed at its initial value for the whole stream while the
-        # parent's decayed. `analyze_convergence` would then certify
-        # Robbins-Monro compliance for a raker actually running at a constant
-        # rate, which this package documents as *not* satisfying it.
-        current_lr = self._get_current_learning_rate()
+        log_min = np.log(self.min_weight)
+        log_max = np.log(self.max_weight)
 
         final_gradient_norm = 0.0
         for step in range(self.n_sgd_steps):
@@ -143,19 +132,12 @@ class OnlineRakingMWU(OnlineRakingSGD):
             if step == self.n_sgd_steps - 1:
                 final_gradient_norm = gradient_norm
 
-            # Clip the exponent argument BEFORE exp to keep everything finite
-            expo = -current_lr * grad
-            np.clip(expo, -max_log, max_log, out=expo)
-            update = np.exp(expo, dtype=self._weights.dtype)
-
-            # Multiplicative update + in-range clipping
-            self._weights[: self._n_obs] *= update
-            np.clip(
-                self._weights[: self._n_obs],
-                self.min_weight,
-                self.max_weight,
-                out=self._weights[: self._n_obs],
-            )
+            weights = self._weights[: self._n_obs]
+            with np.errstate(over="ignore"):
+                log_weights = np.log(weights) - current_lr * grad
+            np.clip(log_weights, log_min, log_max, out=log_weights)
+            np.exp(log_weights, out=weights)
+            np.clip(weights, self.min_weight, self.max_weight, out=weights)
 
             # Verbose output using inherited helper
             if step == 0:

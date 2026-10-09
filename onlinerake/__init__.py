@@ -79,8 +79,6 @@ from .convergence import (
     RobbinsMonroVerification,
     analyze_convergence,
     estimate_lipschitz_constant,
-    mwu_convergence_analysis,
-    theoretical_convergence_bound,
     verify_convergence_conditions,
     verify_robbins_monro,
 )
@@ -98,9 +96,9 @@ from .diagnostics import (
     estimate_margin_variance,
     explain_infeasibility_causes,
     margin_calibration,
-    optimal_mwu_learning_rate,
     resolve_replication_method,
     suggest_feasible_targets,
+    suggest_mwu_learning_rate,
     summarize_raking_results,
 )
 from .divergence import (
@@ -171,8 +169,6 @@ __all__ = [  # noqa: RUF022
     "verify_robbins_monro",
     "estimate_lipschitz_constant",
     "analyze_convergence",
-    "theoretical_convergence_bound",
-    "mwu_convergence_analysis",
     "verify_convergence_conditions",
     # Diagnostics and variance estimation
     "MarginCalibration",
@@ -191,7 +187,7 @@ __all__ = [  # noqa: RUF022
     "compute_weight_efficiency",
     "summarize_raking_results",
     "compare_to_ipf",
-    "optimal_mwu_learning_rate",
+    "suggest_mwu_learning_rate",
     # Divergence metrics
     "kl_divergence_weights",
     "total_variation_weights",
