@@ -105,22 +105,61 @@ def run_stream(targets, x, y, c):
     return raker.weights, float(np.mean(errs)), elapsed / len(x)
 
 
-def run_periodic(targets, dicts, x, t, k):
-    fitted = np.empty(0)
+def ipf_factors(x, t, tol=1e-10, max_cycles=1000):
+    """IPF on binary margins, keeping the per-feature factors in log space.
+
+    IPF from unit weights multiplies each row by one factor per feature,
+    chosen by whether the feature is 0 or 1, so a new row's weight under the
+    last fit is the product of its factors and needs no refit. A feature
+    that is constant so far cannot be raked yet and is skipped. Small early
+    prefixes are often infeasible, and IPF then drives the factors apart
+    without bound; logs keep that finite.
+    """
+    on = x.astype(bool)
+    log_on, log_off = np.zeros(x.shape[1]), np.zeros(x.shape[1])
+    movable = on.any(axis=0) & ~on.all(axis=0)
+
+    def weights():
+        log_w = np.where(on, log_on, log_off).sum(axis=1)
+        return np.exp(log_w - log_w.max())
+
+    w = weights()
+    for _ in range(max_cycles):
+        for j in np.flatnonzero(movable):
+            m = (w @ x[:, j]) / w.sum()
+            log_on[j] += np.log(t[j] / m)
+            log_off[j] += np.log((1 - t[j]) / (1 - m))
+            w = weights()
+        if not movable.any() or np.abs((w @ x) / w.sum() - t)[movable].max() < tol:
+            break
+    log_scale = np.log(w.mean()) + np.where(on, log_on, log_off).sum(axis=1).max()
+    return w / w.mean(), log_on, log_off, log_scale
+
+
+def factor_weights(x, log_on, log_off, log_scale):
+    log_w = np.where(x.astype(bool), log_on, log_off).sum(axis=1) - log_scale
+    return np.exp(np.clip(log_w, -700, 700))
+
+
+def refit_sizes(n, k):
+    """Refit at 1, 2, 4, ... rows until k, then every k rows, and at n."""
+    sizes = {min(2**i, n) for i in range(k.bit_length()) if 2**i < k}
+    sizes |= set(range(k, n + 1, k)) | {n}
+    return sorted(sizes)
+
+
+def run_periodic(x, t, k):
+    sizes = refit_sizes(len(x), k)
     start = time.perf_counter()
-    for stop in range(k, len(x) + k, k):
-        fitted = ipf_weights(targets, dicts[: min(stop, len(x))])
-        fitted = fitted / fitted.mean()
+    fits = {size: ipf_factors(x[:size], t) for size in sizes}
     elapsed = time.perf_counter() - start
     errs = []
     for mark in checkpoints(len(x)):
-        last = (mark // k) * k
-        w = np.ones(mark)
-        if last:
-            prior = ipf_weights(targets, dicts[:last])
-            w[:last] = prior / prior.mean()
+        last = max(size for size in sizes if size <= mark)
+        prior, ones, zeros, scale = fits[last]
+        w = np.concatenate([prior, factor_weights(x[last:mark], ones, zeros, scale)])
         errs.append(np.abs((w @ x[:mark]) / w.sum() - t).mean())
-    return fitted, float(np.mean(errs)), elapsed / len(x)
+    return fits[len(x)][0], float(np.mean(errs)), elapsed / len(x)
 
 
 def run_all_weights(cls, lr, targets, dicts):
@@ -165,11 +204,10 @@ def evaluate_seed(name, scenario, n, p, seed, writer, handle):
         ipf_errs.append(np.abs((w_m @ x[:m]) / w_m.sum() - t).mean())
     emit("ipf", w_ipf, float(np.mean(ipf_errs)), sec, stored)
 
-    # Refitting every 100 rows of a 50,000-row stream means 500 full IPF fits
-    # per seed; at that size only the 1,000-row cadence is affordable.
+    # Each refit stores every row so far; timing covers all refits.
     for k in (100, 1000):
-        if k < n and (k == 1000 or n <= 5000):
-            w, anytime, sec = run_periodic(targets, dicts, x, t, k)
+        if k < n:
+            w, anytime, sec = run_periodic(x, t, k)
             emit(f"periodic_ipf_{k}", w, anytime, sec, stored)
 
     for c in STRENGTHS:
