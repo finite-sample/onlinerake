@@ -6,8 +6,12 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from onlinerake import Targets
-from onlinerake.streaming_raker import StreamingRaker, arrival_weight
+from onlinerake import BatchIPF, Targets
+from onlinerake.streaming_raker import (
+    StreamingRaker,
+    arrival_weight,
+    fit_penalized_raking,
+)
 
 
 def _first_order_root(delta, residual, design_weight, strength):
@@ -248,3 +252,78 @@ def test_time_per_arrival_does_not_grow_with_stream():
         return best
 
     assert late_cost(40_000) < 2.0 * late_cost(2_500)
+
+
+def _easy_stream(n, p, seed):
+    rng = np.random.default_rng(seed)
+    raw = rng.uniform(0.3, 0.7, p)
+    target = np.clip(raw + rng.uniform(-0.15, 0.15, p), 0.15, 0.85)
+    rows = (rng.random((n, p)) < raw).astype(int)
+    names = [f"f{i}" for i in range(p)]
+    targets = Targets(**{name: float(target[i]) for i, name in enumerate(names)})
+    return targets, rows, target
+
+
+def test_penalized_batch_reproduces_ipf_at_large_strength():
+    targets, rows, _ = _easy_stream(300, 3, 0)
+    names = targets.feature_names
+    ipf = BatchIPF(targets)
+    ipf.fit([dict(zip(names, r.tolist(), strict=True)) for r in rows])
+    batch = fit_penalized_raking(rows, targets, calibration_strength=1e6)
+    expected = ipf.weights / ipf.weights.mean()
+    np.testing.assert_allclose(batch / batch.mean(), expected, rtol=1e-6)
+
+
+def test_penalized_batch_satisfies_tilt_condition():
+    targets, rows, target = _easy_stream(500, 4, 1)
+    design = np.random.default_rng(2).uniform(0.5, 2.0, 500)
+    c = 0.1
+    w = fit_penalized_raking(
+        rows, targets, calibration_strength=c, design_weights=design
+    )
+    delta = rows - target
+    residual = w @ delta
+    np.testing.assert_allclose(w, design * np.exp(-c * (delta @ residual)), rtol=1e-8)
+
+
+def test_penalized_batch_rejects_bad_shapes():
+    targets, rows, _ = _easy_stream(50, 3, 3)
+    with pytest.raises(ValueError, match="features must have shape"):
+        fit_penalized_raking(rows[:, :2], targets)
+    with pytest.raises(ValueError, match="design_weights"):
+        fit_penalized_raking(rows, targets, design_weights=np.ones(49))
+
+
+def test_superseded_fixed_step_update_does_not_calibrate():
+    """The update in onlinerake.pdf (March 2026) moves weights by O(1/t^2).
+
+    It adjusted only the arriving weight with a fixed step on the gradient
+    (1/W) * sum_j (m_j - t_j)(x_j - m_j). After the first few rows the step is
+    too small to matter, so margins stay at their unweighted values. This test
+    pins that finding; StreamingRaker replaces the update.
+    """
+    targets, rows, target = _easy_stream(3000, 8, 4)
+    totals = np.zeros(8)
+    weight_sum = 0.0
+    for x in rows.astype(float):
+        w = 1.0
+        totals += x
+        weight_sum += 1.0
+        for _ in range(3):
+            m = totals / weight_sum
+            grad = float((m - target) @ (x - m)) / weight_sum
+            new = min(max(w - 5.0 * grad, 1e-3), 100.0)
+            totals += (new - w) * x
+            weight_sum += new - w
+            w = new
+    raw_error = np.abs(rows.mean(axis=0) - target).mean()
+    fixed_step_error = np.abs(totals / weight_sum - target).mean()
+    assert fixed_step_error == pytest.approx(raw_error, rel=0.02)
+
+    raker = StreamingRaker(targets)
+    for r in rows:
+        raker.partial_fit(dict(zip(targets.feature_names, r.tolist(), strict=True)))
+    streamed_error = np.mean(
+        [abs(raker.margins[n] - targets[n]) for n in targets.feature_names]
+    )
+    assert streamed_error < 0.1 * raw_error

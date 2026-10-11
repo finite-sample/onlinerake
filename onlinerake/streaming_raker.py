@@ -11,7 +11,8 @@ the raking distance of Deville and Sarndal (1992)::
     F(w) = sum_i [w_i log(w_i / d_i) - w_i + d_i]
            + (c / 2) * || sum_i w_i (x_i - t) ||^2
 
-``StreamingRaker`` minimizes F over each arriving weight once.
+``StreamingRaker`` minimizes F over each arriving weight once;
+``fit_penalized_raking`` minimizes it over all weights with the rows stored.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
+from scipy.optimize import minimize
 from scipy.special import wrightomega
 
 from ._utils import feature_value, validate_positive
@@ -257,3 +259,80 @@ class StreamingRaker:
             ],
             dtype=np.float64,
         )
+
+
+def fit_penalized_raking(
+    features: npt.ArrayLike,
+    targets: Targets,
+    calibration_strength: float = 0.1,
+    design_weights: npt.ArrayLike | None = None,
+) -> npt.NDArray[np.float64]:
+    """Minimize the penalized raking objective over all weights at once.
+
+    The minimizer is the exponential tilt w_i = d_i exp(-lambda.delta_i) with
+    lambda = c * sum_i w_i delta_i, so it is found from the strictly convex
+    p-dimensional dual
+    G(lambda) = [sum_i d_i exp(-lambda.delta_i) + ||lambda||^2 / (2c)] / sum_i d_i.
+    This is entropy balancing with a ridge on the multipliers; as c grows it
+    approaches raking. Weights are not bounded here, unlike StreamingRaker.
+
+    Args:
+        features: Array of shape (n, p), columns in targets.feature_names order.
+        targets: Population targets.
+        calibration_strength: Penalty c on the residual totals.
+        design_weights: Base weights of shape (n,). Default all ones.
+
+    Returns:
+        Weights of shape (n,).
+
+    Raises:
+        ValueError: If shapes or settings are invalid.
+        RuntimeError: If the optimizer does not converge.
+    """
+    validate_positive(calibration_strength, "calibration_strength")
+    x = np.asarray(features, dtype=np.float64)
+    names = targets.feature_names
+    if x.ndim != 2 or x.shape[1] != len(names):
+        raise ValueError(f"features must have shape (n, {len(names)})")
+    d = (
+        np.ones(x.shape[0])
+        if design_weights is None
+        else np.asarray(design_weights, dtype=np.float64)
+    )
+    if d.shape != (x.shape[0],) or not np.all(np.isfinite(d)) or np.any(d <= 0):
+        raise ValueError("design_weights must be positive with shape (n,)")
+
+    delta = x - np.array([targets[name] for name in names], dtype=np.float64)
+    c = float(calibration_strength)
+    # Unscaled, the gradient grows with n and SciPy's gtol stops meaning
+    # anything; dividing by sum(d) keeps convergence checks on a fixed scale.
+    scale = d.sum()
+    identity = np.eye(len(names))
+
+    def tilt(lam: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        return d * np.exp(-(delta @ lam))
+
+    def objective(lam: npt.NDArray[np.float64]) -> float:
+        return float((tilt(lam).sum() + lam @ lam / (2 * c)) / scale)
+
+    def gradient(lam: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        return (-(tilt(lam) @ delta) + lam / c) / scale
+
+    def hessian(lam: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        e = tilt(lam)
+        return ((delta.T * e) @ delta + identity / c) / scale
+
+    result = minimize(
+        objective,
+        np.zeros(len(names)),
+        jac=gradient,
+        hess=hessian,
+        method="trust-exact",
+        # Near 1e-9 a Newton step lowers the O(1) objective by about grad^2,
+        # below float64 resolution, so SciPy cannot confirm progress and
+        # reports failure. 1e-8 is the tightest gradient check that is reachable.
+        options={"gtol": 1e-8},
+    )
+    if not result.success:
+        raise RuntimeError(f"penalized raking did not converge: {result.message}")
+    return tilt(result.x)
