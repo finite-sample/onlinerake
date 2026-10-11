@@ -1,5 +1,6 @@
 """Tests for fixed-memory streaming raking."""
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -147,3 +148,103 @@ def test_empty_raker_reports_nan():
     assert np.isnan(raker.margins["a"])
     assert np.isnan(raker.loss)
     assert raker.effective_sample_size == 0.0
+
+
+def test_outcome_estimates_match_weighted_means():
+    raker = StreamingRaker(Targets(a=0.4), outcomes=["y", "z"], keep_weights=True)
+    rng = np.random.default_rng(4)
+    rows = (rng.random(400) < 0.6).astype(int)
+    ys = rng.normal(size=400)
+    zs = rng.normal(size=400)
+    for a, y, z in zip(rows, ys, zs, strict=True):
+        raker.partial_fit({"a": int(a)}, outcomes={"y": float(y), "z": float(z)})
+    w = raker.weights
+    assert raker.estimate("y") == pytest.approx((w @ ys) / w.sum(), rel=1e-9)
+    assert raker.estimates["z"] == pytest.approx((w @ zs) / w.sum(), rel=1e-9)
+
+
+@pytest.mark.parametrize(
+    ("obs", "kwargs", "message"),
+    [
+        ({"a": 2}, {"outcomes": {"y": 1.0}}, "binary"),
+        ({"a": 1}, {"outcomes": {}}, "missing outcomes"),
+        ({"a": 1}, {"outcomes": {"y": 1.0, "extra": 2.0}}, "unregistered"),
+        ({"a": 1}, {"outcomes": {"y": float("nan")}}, "y must be finite"),
+        ({"a": 1}, {"outcomes": {"y": 1.0}, "design_weight": 0.0}, "design_weight"),
+    ],
+)
+def test_rejected_rows_leave_state_untouched(obs, kwargs, message):
+    raker = StreamingRaker(Targets(a=0.4), outcomes=["y"])
+    raker.partial_fit({"a": 1}, outcomes={"y": 1.0})
+    before = (raker.n_obs, raker.total_weight, raker.residuals, raker.estimates)
+    with pytest.raises(ValueError, match=message):
+        raker.partial_fit(obs, **kwargs)
+    after = (raker.n_obs, raker.total_weight, raker.residuals, raker.estimates)
+    assert after[:2] == before[:2]
+    np.testing.assert_array_equal(after[2], before[2])
+    assert after[3] == before[3]
+
+
+def test_outcomes_without_registration_raise():
+    raker = StreamingRaker(Targets(a=0.4))
+    with pytest.raises(ValueError, match="unregistered"):
+        raker.partial_fit({"a": 1}, outcomes={"y": 1.0})
+
+
+def test_estimate_errors_and_empty_state():
+    raker = StreamingRaker(Targets(a=0.4), outcomes=["y"])
+    assert np.isnan(raker.estimate("y"))
+    with pytest.raises(ValueError, match="unregistered outcome"):
+        raker.estimate("nope")
+
+
+def test_weights_require_keep_weights():
+    raker = StreamingRaker(Targets(a=0.4))
+    raker.partial_fit({"a": 1})
+    with pytest.raises(RuntimeError, match="keep_weights"):
+        _ = raker.weights
+
+
+def test_state_does_not_grow_with_stream():
+    raker = StreamingRaker(Targets(a=0.4, b=0.5), outcomes=["y"])
+    rng = np.random.default_rng(5)
+
+    def feed(k):
+        for a, b in (rng.random((k, 2)) < 0.5).astype(int):
+            raker.partial_fit({"a": int(a), "b": int(b)}, outcomes={"y": 1.0})
+
+    def array_shapes():
+        return {
+            key: value.shape
+            for key, value in vars(raker).items()
+            if isinstance(value, np.ndarray)
+        }
+
+    feed(10)
+    shapes = array_shapes()
+    feed(5000)
+    assert array_shapes() == shapes
+    assert raker._weights is None
+
+
+def test_time_per_arrival_does_not_grow_with_stream():
+    rng = np.random.default_rng(6)
+    targets = Targets(**{f"f{i}": 0.5 for i in range(8)})
+
+    def late_cost(n, tail=2000):
+        best = float("inf")
+        for _ in range(3):
+            raker = StreamingRaker(targets)
+            rows = (rng.random((n, 8)) < 0.4).astype(int)
+            dicts = [
+                dict(zip(targets.feature_names, r.tolist(), strict=True)) for r in rows
+            ]
+            for obs in dicts[:-tail]:
+                raker.partial_fit(obs)
+            start = time.perf_counter()
+            for obs in dicts[-tail:]:
+                raker.partial_fit(obs)
+            best = min(best, (time.perf_counter() - start) / tail)
+        return best
+
+    assert late_cost(40_000) < 2.0 * late_cost(2_500)

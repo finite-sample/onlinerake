@@ -173,6 +173,25 @@ class StreamingRaker:
             raise RuntimeError("weights are not kept; pass keep_weights=True")
         return np.array(self._weights, dtype=np.float64)
 
+    def estimate(self, name: str) -> float:
+        """Weighted mean of one registered outcome; NaN before any row.
+
+        Raises:
+            ValueError: If the outcome was not registered.
+        """
+        if name not in self.outcome_names:
+            raise ValueError(f"unregistered outcome: {name}")
+        if self._n_obs == 0:
+            return np.nan
+        return float(
+            self._outcome_sums[self.outcome_names.index(name)] / self._total_weight
+        )
+
+    @property
+    def estimates(self) -> dict[str, float]:
+        """Weighted means of all registered outcomes."""
+        return {name: self.estimate(name) for name in self.outcome_names}
+
     def _features(self, obs: dict[str, Any] | Any) -> npt.NDArray[np.float64]:
         values = np.empty(len(self._feature_names), dtype=np.float64)
         for i, name in enumerate(self._feature_names):
