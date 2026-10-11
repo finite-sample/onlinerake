@@ -146,6 +146,7 @@ from .streaming_inference import (
     estimate_path_dependent_variance,
     explain_streaming_semantics,
 )
+from .streaming_raker import StreamingRaker, fit_penalized_raking
 from .targets import Targets
 
 # Grouped by subsystem rather than sorted: the headings are what make a
@@ -153,6 +154,8 @@ from .targets import Targets
 __all__ = [  # noqa: RUF022
     # Core algorithms
     "Targets",
+    "StreamingRaker",
+    "fit_penalized_raking",
     "OnlineRakingSGD",
     "OnlineRakingMWU",
     "BatchIPF",

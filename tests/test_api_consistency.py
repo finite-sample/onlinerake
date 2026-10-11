@@ -145,3 +145,11 @@ class TestTheRakersOfferTheSameSurface:
             and p.annotation != mwu[name].annotation
         }
         assert not narrowed, f"OnlineRakingMWU narrows: {narrowed}"
+
+
+def test_streaming_raker_is_exported():
+    import onlinerake
+
+    assert "StreamingRaker" in onlinerake.__all__
+    assert "fit_penalized_raking" in onlinerake.__all__
+    assert onlinerake.StreamingRaker.__module__ == "onlinerake.streaming_raker"
