@@ -15,6 +15,7 @@ import matplotlib as mpl
 mpl.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.ticker import NullFormatter
 
 ORDER = ["standard", "large", "hard", "high_dim", "drift", "small"]
 TABLE_METHODS = [
@@ -91,6 +92,7 @@ def tradeoff(results, out):
                     d.loc[method, "us"], d.loc[method, "anytime_err"], "s", label=label
                 )
         ax.set_xscale("log")
+        ax.xaxis.set_minor_formatter(NullFormatter())
         ax.set_title(scenario)
         ax.set_xlabel("microseconds per arrival")
         ax.set_ylabel("anytime mean |margin error|")
