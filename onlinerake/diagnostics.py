@@ -82,12 +82,9 @@ class MarginCalibration:
             while its own spread shrinks -- so the direction is real, but the
             scale is not shared: at n = 4000 this ratio read 11.78 where the
             downstream bias was 0.97 of that estimate's standard error. Use it
-            to compare runs, not against a cutoff.
-
-            An earlier version of this docstring said "below about one, the
-            margin has arrived". That was false, and it came from validating the
-            ratio by sweeping ``learning_rate * n_sgd_steps`` at fixed ``n``,
-            where it does fall neatly to one, without ever sweeping ``n``.
+            to compare runs, not against a cutoff. Sweeping
+            ``learning_rate * n_sgd_steps`` at fixed ``n`` makes it fall neatly
+            to one, which looks like a threshold but is not.
         unclosed_fraction: ``|gap| / |raw_estimate - target|`` -- the share of
             the initial miscalibration the raker did **not** remove. Both terms
             are gaps, so unlike ``gap_ratio`` this does not move with the stream
@@ -191,15 +188,11 @@ def resolve_replication_method(
     :data:`AUTO_REPLICATE_SIZE` keys on. Jackknife is above random groups at
     every size, by 3.6 to 6.5 sigma paired.
 
-    **What does not support it is any claim about the absolute levels.** An
-    earlier version of this table was measured under a systematic
-    ``arange(n) % G`` grouping and showed ``random_groups`` climbing 0.838 ->
-    0.923 -> 0.958, which read as an understatement decaying to about 5% by the
-    threshold. Under the randomized grouping this package now uses (see
-    :func:`_group_assignment`), it does not climb: it sits at 0.90 to 0.93
-    throughout, and jackknife is no longer within noise of 1.0 at the larger
-    sizes either. Both schemes understate somewhat at every size tried, and the
-    threshold is not a point where that stops.
+    **What does not support it is any claim about the absolute levels.** Under
+    the randomized grouping (see :func:`_group_assignment`), ``random_groups``
+    sits at 0.90 to 0.93 throughout, and jackknife is not within noise of 1.0
+    at the larger sizes. Both schemes understate somewhat at every size tried,
+    and the threshold is not a point where that stops.
 
     So :data:`AUTO_REPLICATE_SIZE` is **a judgment about where the choice stops
     mattering much, not a point where either scheme becomes correct.** The
@@ -384,16 +377,13 @@ def _replicate_margins(
     group ``i % groups`` -- which needs no random number generator and so makes
     the variance estimate reproducible.
 
-    An earlier version of this docstring claimed systematic and randomized
-    grouping "agreed to within the study's noise" over 25 streams. A later one
-    replaced that with a claim that both understate the margin's spread by about
-    30%. **Both were unsupported**, and the second was measured here and
-    retracted: re-running the same comparison on different streams reversed its
+    Comparing systematic and randomized grouping over 20-30 streams settles
+    nothing: re-running the same comparison on different streams reverses its
     sign (0.91 and 0.97 on one set of streams, 1.09 and 1.15 on another). The
     denominator in those ratios is a standard deviation estimated from 20-30
     streams, whose own relative error is ``1/sqrt(2(S-1))`` -- about 15% at
     S=25 -- so every one of those numbers sits within a couple of standard
-    errors of 1.0 and of each other. Noise read as signal.
+    errors of 1.0 and of each other.
 
     What *is* measured, at 120 replicates per cell and monotone, is that the
     raked margin's variance does not scale as ``1/n``:

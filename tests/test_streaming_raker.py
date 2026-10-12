@@ -294,13 +294,12 @@ def test_penalized_batch_rejects_bad_shapes():
         fit_penalized_raking(rows, targets, design_weights=np.ones(49))
 
 
-def test_superseded_fixed_step_update_does_not_calibrate():
-    """The update in onlinerake.pdf (March 2026) moves weights by O(1/t^2).
+def test_fixed_step_gradient_update_does_not_calibrate():
+    """Why StreamingRaker solves for the arriving weight exactly.
 
-    It adjusted only the arriving weight with a fixed step on the gradient
-    (1/W) * sum_j (m_j - t_j)(x_j - m_j). After the first few rows the step is
-    too small to matter, so margins stay at their unweighted values. This test
-    pins that finding; StreamingRaker replaces the update.
+    A fixed step on the gradient (1/W) * sum_j (m_j - t_j)(x_j - m_j) moves the
+    arriving weight by O(1/k^2) after k rows, so margins stay at their
+    unweighted values.
     """
     targets, rows, target = _easy_stream(3000, 8, 4)
     totals = np.zeros(8)

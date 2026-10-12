@@ -688,8 +688,7 @@ class TestReplicatesRefitTheSameEstimator:
         design = np.column_stack([female, college, income])
         model = LinearOutcomeModel().fit(design, outcome)
         # Guard the guard: if income carried no weight the test below could
-        # pass while dropping it. An earlier version of this fixture fitted a
-        # coefficient of exactly zero and proved nothing.
+        # pass while dropping it.
         assert abs(model.coef_[2]) > 1e-3
         return model
 
