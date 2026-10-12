@@ -49,6 +49,7 @@ FIELDS = [
     "final_err",
     "max_err",
     "anytime_err",
+    "anytime_bias",
     "ess_frac",
     "bias",
     "sec_per_obs",
@@ -87,22 +88,26 @@ def ipf_weights(targets, dicts):
     return raker.weights
 
 
+def trajectory(x, t, y, truth, weights_at):
+    """Mean |margin error| and mean |bias| over checkpoints during the stream."""
+    errs, biases = [], []
+    for mark in checkpoints(len(x)):
+        w = weights_at(mark)
+        errs.append(np.abs((w @ x[:mark]) / w.sum() - t).mean())
+        biases.append(abs((w @ y[:mark]) / w.sum() - truth))
+    return float(np.mean(errs)), float(np.mean(biases))
+
+
 def run_stream(targets, x, y, c):
     raker = StreamingRaker(
         targets, calibration_strength=c, outcomes=["y"], keep_weights=True
     )
     names = targets.feature_names
-    marks = set(checkpoints(len(x)))
-    errs = []
+    rows = [dict(zip(names, row.tolist(), strict=True)) for row in x]
     start = time.perf_counter()
-    for i, (row, yi) in enumerate(zip(x, y, strict=True), start=1):
-        raker.partial_fit(
-            dict(zip(names, row.tolist(), strict=True)), outcomes={"y": float(yi)}
-        )
-        if i in marks:
-            errs.append(np.mean([abs(raker.margins[k] - targets[k]) for k in names]))
-    elapsed = time.perf_counter() - start
-    return raker.weights, float(np.mean(errs)), elapsed / len(x)
+    for obs, yi in zip(rows, y, strict=True):
+        raker.partial_fit(obs, outcomes={"y": float(yi)})
+    return raker.weights, (time.perf_counter() - start) / len(x)
 
 
 def ipf_factors(x, t, tol=1e-10, max_cycles=1000):
@@ -148,18 +153,22 @@ def refit_sizes(n, k):
     return sorted(sizes)
 
 
-def run_periodic(x, t, k):
-    sizes = refit_sizes(len(x), k)
+def doubling_sizes(n):
+    """Refit only when the stream doubles: the cheapest schedule that keeps up."""
+    return sorted({min(2**i, n) for i in range(n.bit_length() + 1)})
+
+
+def run_periodic(x, t, sizes):
     start = time.perf_counter()
     fits = {size: ipf_factors(x[:size], t) for size in sizes}
     elapsed = time.perf_counter() - start
-    errs = []
-    for mark in checkpoints(len(x)):
+
+    def weights_at(mark):
         last = max(size for size in sizes if size <= mark)
         prior, ones, zeros, scale = fits[last]
-        w = np.concatenate([prior, factor_weights(x[last:mark], ones, zeros, scale)])
-        errs.append(np.abs((w @ x[:mark]) / w.sum() - t).mean())
-    return fits[len(x)][0], float(np.mean(errs)), elapsed / len(x)
+        return np.concatenate([prior, factor_weights(x[last:mark], ones, zeros, scale)])
+
+    return fits[len(x)][0], weights_at, elapsed / len(x)
 
 
 def run_all_weights(cls, lr, targets, dicts):
@@ -179,47 +188,50 @@ def evaluate_seed(name, scenario, n, p, seed, writer, handle):
     base = {"scenario": name, "n": n, "p": p, "seed": seed}
     stored = n * (p + 1)
 
-    def emit(method, w, anytime, sec, state):
+    nan = float("nan")
+
+    def emit(method, w, path, sec, state):
         writer.writerow(
             {
                 **base,
                 "method": method,
                 **summarize(w, x, t, y, truth),
-                "anytime_err": anytime,
+                "anytime_err": path[0],
+                "anytime_bias": path[1],
                 "sec_per_obs": sec,
                 "state_floats": state,
             }
         )
         handle.flush()
 
-    raw_any = float(np.mean([np.abs(x[:m].mean(0) - t).mean() for m in checkpoints(n)]))
-    emit("raw", np.ones(n), raw_any, 0.0, 0)
+    emit("raw", np.ones(n), trajectory(x, t, y, truth, np.ones), 0.0, 0)
 
     start = time.perf_counter()
     w_ipf = ipf_weights(targets, dicts)
     sec = (time.perf_counter() - start) / n
-    ipf_errs = []
-    for m in checkpoints(n):
-        w_m = ipf_weights(targets, dicts[:m])
-        ipf_errs.append(np.abs((w_m @ x[:m]) / w_m.sum() - t).mean())
-    emit("ipf", w_ipf, float(np.mean(ipf_errs)), sec, stored)
+    path = trajectory(x, t, y, truth, lambda m: ipf_weights(targets, dicts[:m]))
+    emit("ipf", w_ipf, path, sec, stored)
 
-    # Each refit stores every row so far; timing covers all refits.
-    for k in (100, 1000):
-        if k < n:
-            w, anytime, sec = run_periodic(x, t, k)
-            emit(f"periodic_ipf_{k}", w, anytime, sec, stored)
+    # Every refit stores all rows so far; timing covers all refits.
+    schedules = {f"periodic_ipf_{k}": refit_sizes(n, k) for k in (100, 1000) if k < n}
+    schedules["periodic_ipf_doubling"] = doubling_sizes(n)
+    for method, sizes in schedules.items():
+        w, weights_at, sec = run_periodic(x, t, sizes)
+        emit(method, w, trajectory(x, t, y, truth, weights_at), sec, stored)
 
     for c in STRENGTHS:
-        w, anytime, sec = run_stream(targets, x, y, c)
+        w, sec = run_stream(targets, x, y, c)
+        # Earlier weights never change, so the stream's weights at any point
+        # are a prefix of its final weights.
+        path = trajectory(x, t, y, truth, lambda m, w=w: w[:m])
         # Residual totals (p), outcome sum (1), total weight, sum of squared
         # weights, and count.
-        emit(f"stream_c{c:g}", w, anytime, sec, p + 1 + 3)
+        emit(f"stream_c{c:g}", w, path, sec, p + 1 + 3)
         start = time.perf_counter()
         w = fit_penalized_raking(x, targets, calibration_strength=c)
         sec = (time.perf_counter() - start) / n
-        final = summarize(w, x, t, y, truth)["final_err"]
-        emit(f"batch_c{c:g}", w, final, sec, stored)
+        # The batch fit exists only once the stream has ended.
+        emit(f"batch_c{c:g}", w, (nan, nan), sec, stored)
 
     if n <= 5000:
         for method, cls, lr in (
@@ -227,7 +239,7 @@ def evaluate_seed(name, scenario, n, p, seed, writer, handle):
             ("mwu_all", OnlineRakingMWU, 1.0),
         ):
             w, sec = run_all_weights(cls, lr, targets, dicts)
-            emit(method, w, float("nan"), sec, stored)
+            emit(method, w, (nan, nan), sec, stored)
 
 
 def order_dependence(out_dir, n_seeds, n_orders=10):
@@ -244,10 +256,10 @@ def order_dependence(out_dir, n_seeds, n_orders=10):
             estimates = []
             for _ in range(n_orders):
                 order = rng.permutation(len(x))
-                w, _, _ = run_stream(targets, x[order], y[order], 0.1)
+                w, _ = run_stream(targets, x[order], y[order], 0.3)
                 estimates.append(float((w @ y[order]) / w.sum()))
             writer.writerow(
-                ["standard", seed, "stream_c0.1", float(np.std(estimates, ddof=1))]
+                ["standard", seed, "stream_c0.3", float(np.std(estimates, ddof=1))]
             )
             handle.flush()
 
@@ -268,7 +280,7 @@ def scaling(out_dir, sizes):
             start = time.perf_counter()
             for obs in dicts:
                 raker.partial_fit(obs)
-            writer.writerow([n, "stream_c0.1", (time.perf_counter() - start) / n])
+            writer.writerow([n, "stream_c0.3", (time.perf_counter() - start) / n])
             start = time.perf_counter()
             ipf_weights(targets, dicts)
             writer.writerow(

@@ -82,7 +82,7 @@ def test_first_observation_sets_margins_to_that_row():
     assert raker.margins == pytest.approx({"a": 1.0, "b": 0.0}, rel=1e-12)
     delta = np.array([0.7, -0.6])
     assert weight == pytest.approx(
-        _first_order_root(delta, np.zeros(2), 1.0, 0.1), rel=1e-9
+        _first_order_root(delta, np.zeros(2), 1.0, 0.3), rel=1e-9
     )
 
 

@@ -75,7 +75,8 @@ class StreamingRaker:
         targets: Population targets (binary shares or continuous means).
         calibration_strength: Penalty c on the margin residual totals. Larger
             values match the targets more closely at the cost of more
-            variable weights. Default 0.1.
+            variable weights. Default 0.3, which held up across the easy,
+            extreme-target and many-margin scenarios in ms/onlinerake.pdf.
         min_weight: Lower weight bound. Default 0.001.
         max_weight: Upper weight bound. Default 100.
         outcomes: Names of outcomes whose weighted means to track.
@@ -88,15 +89,15 @@ class StreamingRaker:
         >>> for female, spend in [(1, 10.0), (1, 12.0), (1, 11.0), (0, 20.0)] * 50:
         ...     _ = raker.partial_fit({"female": female}, outcomes={"spend": spend})
         >>> round(raker.margins["female"], 2)
-        0.56
+        0.52
         >>> round(raker.estimate("spend"), 1)
-        15.0
+        15.3
     """
 
     def __init__(
         self,
         targets: Targets,
-        calibration_strength: float = 0.1,
+        calibration_strength: float = 0.3,
         min_weight: float = 1e-3,
         max_weight: float = 100.0,
         outcomes: Sequence[str] = (),
@@ -264,7 +265,7 @@ class StreamingRaker:
 def fit_penalized_raking(
     features: npt.ArrayLike,
     targets: Targets,
-    calibration_strength: float = 0.1,
+    calibration_strength: float = 0.3,
     design_weights: npt.ArrayLike | None = None,
 ) -> npt.NDArray[np.float64]:
     """Minimize the penalized raking objective over all weights at once.
