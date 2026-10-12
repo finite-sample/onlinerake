@@ -140,6 +140,69 @@ def table(results, order, out):
     )
 
 
+LABELS = {
+    "standard": "Standard",
+    "large": "Large",
+    "hard": "Hard targets",
+    "high_dim": "Many margins",
+    "drift": "Drift",
+    "small": "Small",
+}
+
+
+def main_tables(results, out):
+    """Two compact tables for the main text, one row per scenario."""
+    d = results.assign(abs_bias=results.bias.abs(), us=results.sec_per_obs * 1e6)
+    g = d.groupby(["scenario", "method"]).mean(numeric_only=True)
+
+    def col(method, field):
+        return [g.loc[(s, method), field] for s in ORDER]
+
+    final = pd.DataFrame(
+        {
+            "IPF": col("ipf", "abs_bias"),
+            "Batch": col("batch_c0.3", "abs_bias"),
+            "Stream": col("stream_c0.3", "abs_bias"),
+            "All-weights SGD": [
+                g.loc[(s, "sgd_all"), "abs_bias"]
+                if (s, "sgd_all") in g.index
+                else float("nan")
+                for s in ORDER
+            ],
+            "IPF ESS/n": col("ipf", "ess_frac"),
+            "Stream ESS/n": col("stream_c0.3", "ess_frac"),
+        },
+        index=[LABELS[s] for s in ORDER],
+    )
+    final.to_latex(
+        out / "table_final.tex", na_rep="--", float_format="%.3f", escape=True
+    )
+
+    def periodic(method, field):
+        return [
+            g.loc[(s, method), field] if (s, method) in g.index else float("nan")
+            for s in ORDER
+        ]
+
+    during = pd.DataFrame(
+        {
+            "Stream": col("stream_c0.3", "anytime_err"),
+            "IPF every 1000": periodic("periodic_ipf_1000", "anytime_err"),
+            "IPF at doubling": periodic("periodic_ipf_doubling", "anytime_err"),
+            "Stream us": col("stream_c0.3", "us"),
+            "IPF every 1000 us": periodic("periodic_ipf_1000", "us"),
+            "IPF at doubling us": periodic("periodic_ipf_doubling", "us"),
+        },
+        index=[LABELS[s] for s in ORDER],
+    )
+    during.to_latex(
+        out / "table_during.tex",
+        na_rep="--",
+        float_format=lambda v: f"{v:.0f}" if v >= 10 else f"{v:.4f}",
+        escape=True,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input_dir", default="eval_outputs")
@@ -152,6 +215,7 @@ def main():
     tradeoff(results, out)
     scaling(pd.read_csv(src / "streaming_scaling.csv"), out)
     table(results, pd.read_csv(src / "streaming_order.csv"), out)
+    main_tables(results, out)
 
 
 if __name__ == "__main__":
