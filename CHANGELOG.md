@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `StreamingRaker` rakes a stream without storing it. Each arriving row gets the
+  weight that minimizes its raking distance from its design weight plus a penalty
+  on the running margin gap, in closed form, so memory is `p + 4` numbers for `p`
+  margins and cost per row does not grow with the stream. It accepts design
+  weights and tracks weighted outcome means.
+- `fit_penalized_raking` minimizes the same objective over all stored rows.
+- `scipy` is a runtime dependency.
+- The manuscript in `ms/` derives the update and evaluates it against full-data
+  and periodic IPF.
+
+### Changed
+
+- The documentation recommends periodic `BatchIPF` when rows can be stored and
+  `StreamingRaker` when they cannot. `OnlineRakingSGD` and `OnlineRakingMWU`
+  store and revisit every row.
+
 ## [3.0.0] - 2026-10-09
 
 Online calibration now reports whether the current sample meets its targets.

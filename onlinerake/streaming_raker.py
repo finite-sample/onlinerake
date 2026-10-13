@@ -177,7 +177,13 @@ class StreamingRaker:
         return np.array(self._weights, dtype=np.float64)
 
     def estimate(self, name: str) -> float:
-        """Weighted mean of one registered outcome; NaN before any row.
+        """Weighted mean of one registered outcome.
+
+        Args:
+            name: An outcome name passed to the constructor.
+
+        Returns:
+            The weighted mean, or NaN before any row.
 
         Raises:
             ValueError: If the outcome was not registered.

@@ -1,15 +1,15 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
-version: 3.0.0
-date-released: 2026-10-09
+version: 3.1.0
+date-released: 2026-10-13
 title: "onlinerake: Streaming Survey Raking for Real-time Weight Calibration"
 authors:
   - family-names: "Sood"
     given-names: "Gaurav"
 repository-code: "https://github.com/finite-sample/onlinerake"
 url: "https://github.com/finite-sample/onlinerake"
-abstract: "A Python package for streaming survey raking (weight calibration) using SGD and MWU algorithms. Enables real-time weight adjustment for streaming survey data to match known population margins."
+abstract: "A Python package for survey raking (weight calibration) on streams. StreamingRaker weights each arriving row in closed form against a fixed set of running totals, so past rows need not be stored."
 keywords:
   - "survey weighting"
   - "raking"
