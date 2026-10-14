@@ -24,13 +24,21 @@ totals, so memory does not grow with the stream:
    variable.
 
 **design_weight**
-   Pass ``design_weight=`` to ``partial_fit`` for rows with base weights.
-   Rescale them to mean 1 first; the bounds ``min_weight`` and ``max_weight``
-   apply to the ratio of a row's weight to its design weight.
+   Pass ``design_weight=`` to ``partial_fit`` for rows with base weights, in
+   any units. Returned weights are relative to the mean design weight so far,
+   and the bounds ``min_weight`` and ``max_weight`` apply to the ratio of a
+   row's weight to its design weight.
 
 **Units**
-   The default strength assumes continuous features in units where their
-   spread is about 1, for example income in tens of thousands of dollars.
+   The penalty divides design weights by their running mean and continuous
+   features by the running root mean square of their deviations from target,
+   so results are the same for income in dollars or in thousands.
+
+**trim**
+   Cap each weight at this multiple of the mean weight assigned so far, as in
+   Potter's weight trimming; 3 to 6 is common. Trimming lowers the variance of
+   estimates and can bias them when large design weights carry information
+   the margins do not. Off by default.
 
 **keep_weights**
    ``StreamingRaker(..., keep_weights=True)`` stores each assigned weight in

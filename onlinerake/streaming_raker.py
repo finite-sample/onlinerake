@@ -13,6 +13,14 @@ the raking distance of Deville and Sarndal (1992)::
 
 ``StreamingRaker`` minimizes F over each arriving weight once;
 ``fit_penalized_raking`` minimizes it over all weights with the rows stored.
+
+The penalty is on totals, so c would otherwise carry the units of the design
+weights and of continuous features: doubling every design weight would act
+like doubling c, and income in dollars instead of thousands would weigh a
+million times more. Both functions therefore divide design weights by their
+mean and each continuous feature's deviations from its target by their root
+mean square, so a given c means the same thing in any units, as with the unit-
+free ridge penalty in standard calibration software.
 """
 
 from __future__ import annotations
@@ -77,18 +85,24 @@ class StreamingRaker:
             values match the targets more closely at the cost of more
             variable weights. Default 0.3, which held up across the easy,
             extreme-target and many-margin scenarios in ms/onlinerake.pdf.
-            The penalty is on totals, so c assumes design weights near 1 and
-            continuous features in standardized units: multiplying design
-            weights by s acts like multiplying c by s, and measuring a feature
-            in dollars instead of thousands multiplies its share of the
-            penalty by a million. Rescale design weights to mean 1 and
-            continuous features to unit spread first.
+            Design weights are divided by their running mean and continuous
+            features by the running root mean square of their deviations from
+            target, so c does not depend on either's units.
         min_weight: Lower bound on a row's weight relative to its design
             weight, w / d. Default 0.001.
         max_weight: Upper bound on w / d. Default 100.
+        trim: Cap each weight at this multiple of the mean weight assigned so
+            far, trading some bias for lower variance as in Potter's (1990)
+            trimming; common choices are 3 to 6. Past weights cannot absorb
+            the trimmed amount, so the penalty shifts it onto later rows. The
+            cap overrides min_weight. Default None, no trimming.
         outcomes: Names of outcomes whose weighted means to track.
         keep_weights: Store each assigned weight. Off by default, which keeps
             memory independent of stream length.
+
+    Weights are returned relative to the mean design weight so far, so they
+    sum to about the number of rows. To express them as population counts,
+    multiply each kept weight by N / total_weight at the end.
 
     Examples:
         >>> from onlinerake import StreamingRaker, Targets
@@ -107,6 +121,7 @@ class StreamingRaker:
         calibration_strength: float = 0.3,
         min_weight: float = 1e-3,
         max_weight: float = 100.0,
+        trim: float | None = None,
         outcomes: Sequence[str] = (),
         keep_weights: bool = False,
     ) -> None:
@@ -115,6 +130,8 @@ class StreamingRaker:
         validate_positive(max_weight, "max_weight")
         if max_weight <= min_weight:
             raise ValueError("max_weight must exceed min_weight")
+        if trim is not None and not trim > 1.0:
+            raise ValueError("trim must exceed 1")
         if len(set(outcomes)) != len(outcomes):
             raise ValueError("outcome names must be unique")
 
@@ -122,12 +139,20 @@ class StreamingRaker:
         self.calibration_strength = float(calibration_strength)
         self.min_weight = float(min_weight)
         self.max_weight = float(max_weight)
+        self.trim = None if trim is None else float(trim)
         self.outcome_names = tuple(outcomes)
         self._feature_names = targets.feature_names
         self._target = np.array(
             [targets[name] for name in self._feature_names], dtype=np.float64
         )
         self._residual = np.zeros(len(self._feature_names), dtype=np.float64)
+        self._continuous = np.array(
+            [targets.is_continuous(name) for name in self._feature_names]
+        )
+        self._squared_deviation = np.zeros(
+            int(self._continuous.sum()), dtype=np.float64
+        )
+        self._design_total = 0.0
         self._outcome_sums = np.zeros(len(self.outcome_names), dtype=np.float64)
         self._total_weight = 0.0
         self._sum_sq_weight = 0.0
@@ -141,7 +166,7 @@ class StreamingRaker:
 
     @property
     def total_weight(self) -> float:
-        """Sum of assigned weights."""
+        """Sum of assigned weights, in units of the mean design weight."""
         return self._total_weight
 
     @property
@@ -225,11 +250,12 @@ class StreamingRaker:
 
         Args:
             obs: Feature values as a dict or attributes; missing features are 0.
-            design_weight: The row's base weight. Default 1.
+            design_weight: The row's base weight, in any units. Default 1.
             outcomes: Values for every registered outcome name.
 
         Returns:
-            The weight assigned to this row.
+            The weight assigned to this row, relative to the mean design
+            weight so far.
 
         Raises:
             ValueError: If a feature, outcome, or design weight is invalid.
@@ -239,14 +265,23 @@ class StreamingRaker:
         x = self._features(obs)
         y = self._outcome_values(outcomes)
         delta = x - self._target
+        n = self._n_obs + 1
+        self._design_total += float(design_weight)
+        self._squared_deviation += delta[self._continuous] ** 2
+        spread = np.ones_like(delta)
+        rms = np.sqrt(self._squared_deviation / n)
+        spread[self._continuous] = np.where(rms > 0.0, rms, 1.0)
         weight = arrival_weight(
-            delta,
-            self._residual,
-            float(design_weight),
+            delta / spread,
+            self._residual / spread,
+            float(design_weight) * n / self._design_total,
             self.calibration_strength,
             self.min_weight,
             self.max_weight,
         )
+        if self.trim is not None:
+            mean = self._total_weight / self._n_obs if self._n_obs else 1.0
+            weight = min(weight, self.trim * mean)
         self._residual += weight * delta
         self._outcome_sums += weight * y
         self._total_weight += weight
@@ -289,6 +324,9 @@ def fit_penalized_raking(
     G(lambda) = [sum_i d_i exp(-lambda.delta_i) + ||lambda||^2 / (2c)] / sum_i d_i.
     This is entropy balancing with a ridge on the multipliers; as c grows it
     approaches raking. Weights are not bounded here, unlike StreamingRaker.
+    As in StreamingRaker, the penalty is computed with design weights divided
+    by their mean and continuous deviations divided by their root mean square;
+    the returned weights are in the units of design_weights.
 
     Args:
         features: Array of shape (n, p), columns in targets.feature_names order.
@@ -317,6 +355,11 @@ def fit_penalized_raking(
         raise ValueError("design_weights must be positive with shape (n,)")
 
     delta = x - np.array([targets[name] for name in names], dtype=np.float64)
+    continuous = np.array([targets.is_continuous(name) for name in names])
+    rms = np.sqrt((delta**2).mean(axis=0))
+    delta = delta / np.where(continuous & (rms > 0.0), rms, 1.0)
+    mean_design = d.mean()
+    d = d / mean_design
     c = float(calibration_strength)
     # Unscaled, the gradient grows with n and SciPy's gtol stops meaning
     # anything; dividing by sum(d) keeps convergence checks on a fixed scale.
@@ -349,4 +392,4 @@ def fit_penalized_raking(
     )
     if not result.success:
         raise RuntimeError(f"penalized raking did not converge: {result.message}")
-    return tilt(result.x)
+    return mean_design * tilt(result.x)

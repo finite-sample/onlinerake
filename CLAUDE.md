@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 `onlinerake` is a Python package for streaming survey raking (weight calibration):
-- **Streaming raker** (`StreamingRaker`) - fixed memory: each arriving row gets a closed-form weight (Wright omega) against `p + 4` running totals; earlier weights never change
+- **Streaming raker** (`StreamingRaker`) - fixed memory: each arriving row gets a closed-form weight (Wright omega) against `p + 5` running totals; earlier weights never change
 - **Penalized raking** (`fit_penalized_raking`) - the same objective minimized over all stored rows
 - **SGD raking** (`OnlineRakingSGD`) and **MWU raking** (`OnlineRakingMWU`) - store every row and re-optimize all weights at each arrival
 

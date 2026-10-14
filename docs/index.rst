@@ -15,7 +15,7 @@ onlinerake: Streaming Survey Raking
 Raking adjusts weights so that weighted shares of groups match known
 population shares. The standard algorithm, iterative proportional fitting
 (IPF), needs every row seen so far. ``StreamingRaker`` rakes a stream without
-storing it: its state is ``p + 4`` running totals for ``p`` margins, each
+storing it: its state is ``p + 5`` running totals for ``p`` margins, each
 arriving row gets its weight in closed form, and the cost per row does not grow
 with the stream.
 

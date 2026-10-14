@@ -31,21 +31,19 @@ print(round(raker.margins["female"], 2))  # 0.52; the raw sample is 75% female
 print(round(raker.estimate("spend"), 1))  # 15.3; the unweighted mean is 13.25
 ```
 
-`partial_fit` returns the row's weight. Pass `design_weight=` for rows that
-arrive with base weights, and `keep_weights=True` to store the assigned weights
-(this makes memory grow with the stream).
-
-The default `calibration_strength` assumes design weights near 1 and continuous
-features in standardized units. Rescale expansion weights to mean 1 (weighted
-means do not change) and measure continuous features in units where their spread
-is about 1, for example income in tens of thousands rather than dollars.
+`partial_fit` returns the row's weight, relative to the mean design weight so
+far. Pass `design_weight=` for rows that arrive with base weights, in any units,
+and `keep_weights=True` to store the assigned weights (this makes memory grow
+with the stream). Results do not depend on the units of design weights or of
+continuous features: expansion weights of 5,000 give the same answer as weights
+near 1, and income in dollars the same as in thousands.
 
 ## Which Tool
 
 | Your situation | Use |
 |---|---|
 | Rows can be stored and the stream is survey-sized | Refit `BatchIPF` periodically. It is exact at each refit and gives the highest effective sample size. |
-| Rows cannot or should not be stored, memory is fixed, or the stream is long | `StreamingRaker`: `p + 4` numbers of state for `p` margins, constant cost per row. |
+| Rows cannot or should not be stored, memory is fixed, or the stream is long | `StreamingRaker`: `p + 5` numbers of state for `p` margins, constant cost per row. |
 | You want the batch version of the streaming objective | `fit_penalized_raking` |
 
 Measured cost per arriving row, eight margins (`eval_outputs/streaming_scaling.csv`):
@@ -202,13 +200,15 @@ print(f"Batch loss: {batch_raker.loss:.6f}")
 
 ### Core Classes
 
-**`StreamingRaker(targets, calibration_strength=0.3, outcomes=())`** - Fixed-memory streaming raker
-- `.partial_fit(obs, design_weight=1.0, outcomes=None)` - Weight one row; returns its weight
+**`StreamingRaker(targets, calibration_strength=0.3, min_weight=0.001, max_weight=100, trim=None, outcomes=())`** - Fixed-memory streaming raker
+- `min_weight`, `max_weight` - Bounds on each row's weight relative to its design weight
+- `trim` - Cap each weight at this multiple of the mean weight so far (Potter-style trimming; 3 to 6 is common)
+- `.partial_fit(obs, design_weight=1.0, outcomes=None)` - Weight one row; returns its weight relative to the mean design weight
 - `.margins`, `.loss`, `.effective_sample_size` - Current state
 - `.estimate(name)`, `.estimates` - Weighted outcome means
 - `.weights` - Assigned weights (requires `keep_weights=True`)
 
-**`fit_penalized_raking(features, targets, calibration_strength=0.3)`** - Same objective, all rows at once
+**`fit_penalized_raking(features, targets, calibration_strength=0.3, design_weights=None)`** - Same objective, all rows at once
 
 **`Targets(**features)`** - Define population margins
 - Binary features: `female=0.51` (proportion = 1)
