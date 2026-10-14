@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-13
+
 ### Added
 
 - `StreamingRaker` rakes a stream without storing it. Each arriving row gets the
