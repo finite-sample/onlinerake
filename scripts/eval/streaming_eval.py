@@ -225,8 +225,8 @@ def evaluate_seed(name, scenario, n, p, seed, writer, handle):
         # are a prefix of its final weights.
         path = trajectory(x, t, y, truth, lambda m, w=w: w[:m])
         # Residual totals (p), outcome sum (1), total weight, sum of squared
-        # weights, and count.
-        emit(f"stream_c{c:g}", w, path, sec, p + 1 + 3)
+        # weights, sum of design weights, and count.
+        emit(f"stream_c{c:g}", w, path, sec, p + 1 + 4)
         start = time.perf_counter()
         w = fit_penalized_raking(x, targets, calibration_strength=c)
         sec = (time.perf_counter() - start) / n

@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-13
+
+### Added
+
+- `StreamingRaker(trim=k)` caps each weight at `k` times the mean weight so
+  far, as in Potter's (1990) weight trimming. Later rows absorb the trimmed
+  amount through the margin penalty.
+
+### Fixed
+
+- `StreamingRaker` and `fit_penalized_raking` no longer depend on the units of
+  design weights or continuous features. The penalty divides design weights by
+  their (running) mean and each continuous feature's deviations from target by
+  their root mean square. Before, expansion weights of 5,000 acted like a
+  5,000-times stronger penalty and pinned weights at their lower bound.
+- `StreamingRaker.partial_fit` returns weights relative to the mean design
+  weight so far; `total_weight` is in the same units. The state is `p + 5`
+  numbers, plus one per continuous margin. With unit design weights and binary
+  margins the weights are unchanged.
+
 ## [3.1.0] - 2026-10-13
 
 ### Added

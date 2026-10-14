@@ -86,9 +86,50 @@ def test_first_observation_sets_margins_to_that_row():
     )
 
 
-def test_row_on_target_keeps_design_weight():
+def test_row_on_target_keeps_relative_design_weight():
     raker = StreamingRaker(Targets(age=(35.0, "mean")))
-    assert raker.partial_fit({"age": 35.0}, design_weight=2.0) == 2.0
+    assert raker.partial_fit({"age": 35.0}, design_weight=2.0) == 1.0
+    assert raker.partial_fit({"age": 35.0}, design_weight=4.0) == pytest.approx(4 / 3)
+
+
+def _stream_weights(targets, rows, design):
+    raker = StreamingRaker(targets, keep_weights=True)
+    for row, d in zip(rows, design, strict=True):
+        raker.partial_fit(
+            dict(zip(targets.feature_names, row.tolist(), strict=True)),
+            design_weight=float(d),
+        )
+    return raker.weights, raker.margins
+
+
+def test_design_weight_units_do_not_change_weights():
+    rng = np.random.default_rng(6)
+    rows = (rng.random((400, 2)) < [0.5, 0.4]).astype(int)
+    design = rng.uniform(0.2, 5.0, 400)
+    targets = Targets(a=0.3, b=0.6)
+    w, margins = _stream_weights(targets, rows, design)
+    w_scaled, margins_scaled = _stream_weights(targets, rows, 5000 * design)
+    np.testing.assert_allclose(w_scaled, w, rtol=1e-9)
+    assert margins_scaled == pytest.approx(margins, rel=1e-9)
+
+
+def _income_rows(rng, n, scale):
+    female = (rng.random(n) < 0.6).astype(float)
+    income = rng.normal(45.0, 15.0, n) * scale
+    return np.column_stack([female, income])
+
+
+def test_feature_units_do_not_change_weights():
+    rows = _income_rows(np.random.default_rng(7), 400, 1.0)
+    dollars = rows * [1.0, 1000.0]
+    w, margins = _stream_weights(
+        Targets(female=0.5, income=(50.0, "mean")), rows, np.ones(400)
+    )
+    w_dollars, margins_dollars = _stream_weights(
+        Targets(female=0.5, income=(50000.0, "mean")), dollars, np.ones(400)
+    )
+    np.testing.assert_allclose(w_dollars, w, rtol=1e-9)
+    assert margins_dollars["income"] == pytest.approx(1000 * margins["income"])
 
 
 def test_infeasible_targets_stay_finite_and_bounded():
@@ -112,6 +153,31 @@ def test_bounds_apply_to_weight_relative_to_design_weight():
     assert weight == pytest.approx(5000.0, rel=1e-6)
     low = arrival_weight(delta, np.array([1e6]), 5000.0, 1.0, 1e-3, 100.0)
     assert low == pytest.approx(5.0)
+
+
+def test_trim_caps_weight_at_multiple_of_mean_weight():
+    rng = np.random.default_rng(10)
+    rows = (rng.random((2000, 3)) < [0.5, 0.4, 0.6]).astype(int)
+    design = rng.lognormal(0.0, 1.5, 2000)
+    targets = Targets(a=0.4, b=0.5, c=0.5)
+
+    def run(trim):
+        raker = StreamingRaker(targets, trim=trim, keep_weights=True)
+        caps = []
+        for row, d in zip(rows, design, strict=True):
+            mean = raker.total_weight / raker.n_obs if raker.n_obs else 1.0
+            caps.append(3.0 * mean)
+            raker.partial_fit(
+                dict(zip("abc", row.tolist(), strict=True)), design_weight=float(d)
+            )
+        return raker, np.array(caps)
+
+    untrimmed, caps = run(None)
+    trimmed, caps = run(3.0)
+    assert np.any(untrimmed.weights > caps)
+    assert np.all(trimmed.weights <= caps * (1 + 1e-12))
+    assert trimmed.effective_sample_size > untrimmed.effective_sample_size
+    assert trimmed.loss < 1e-3
 
 
 @pytest.mark.parametrize("strength", [1e-12, 1e12])
@@ -151,6 +217,8 @@ def test_object_and_missing_features_match_dict_input():
         ),
         ({"min_weight": 0.0}, "min_weight must be positive"),
         ({"min_weight": 2.0, "max_weight": 1.0}, "max_weight must exceed"),
+        ({"trim": 1.0}, "trim must exceed 1"),
+        ({"trim": float("nan")}, "trim must exceed 1"),
     ],
 )
 def test_invalid_settings_raise(kwargs, message):
@@ -293,8 +361,22 @@ def test_penalized_batch_satisfies_tilt_condition():
         rows, targets, calibration_strength=c, design_weights=design
     )
     delta = rows - target
-    residual = w @ delta
+    residual = (w / design.mean()) @ delta
     np.testing.assert_allclose(w, design * np.exp(-c * (delta @ residual)), rtol=1e-8)
+
+
+def test_penalized_batch_is_free_of_units():
+    rows = _income_rows(np.random.default_rng(8), 300, 1.0)
+    design = np.random.default_rng(9).uniform(0.5, 2.0, 300)
+    w = fit_penalized_raking(
+        rows, Targets(female=0.5, income=(50.0, "mean")), design_weights=design
+    )
+    w_scaled = fit_penalized_raking(
+        rows * [1.0, 1000.0],
+        Targets(female=0.5, income=(50000.0, "mean")),
+        design_weights=5000 * design,
+    )
+    np.testing.assert_allclose(w_scaled, 5000 * w, rtol=1e-6)
 
 
 def test_penalized_batch_rejects_bad_shapes():
