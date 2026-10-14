@@ -267,10 +267,8 @@ See `examples/` for complete worked examples:
 - `ad_targeting_calibration.py` - Real-time ad delivery calibration
 - `recommendation_balancing.py` - Content recommendation fairness
 
-Interactive notebooks in `docs/notebooks/`:
-- `01_getting_started.ipynb` - Visual introduction
-- `02_performance_comparison.ipynb` - Algorithm benchmarking
-- `03_advanced_diagnostics.ipynb` - Convergence and diagnostics
+Documentation examples in `docs/examples/` run on every docs build:
+- `plot_streaming_raker.py` - A biased stream raked in fixed memory, against full-data IPF
 
 ## Citation
 

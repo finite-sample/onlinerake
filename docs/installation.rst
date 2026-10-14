@@ -49,10 +49,8 @@ Test that the package is working correctly:
    >>> raker.margins
    {'female': 0.5}
 
-To explore the interactive tutorials, run these commands in the cloned
-repository. The published package does not include the notebook files.
+The examples are scripts in ``docs/examples`` in the repository. Run one with:
 
 .. code-block:: bash
 
-   uv sync --all-groups
-   uv run --with notebook jupyter notebook docs/notebooks/
+   uv run --group docs python docs/examples/plot_streaming_raker.py

@@ -307,5 +307,3 @@ Both algorithms are robust to extreme parameter settings:
    for obs in challenging_data:
        raker.partial_fit(obs)
        assert np.all(np.isfinite(raker.weights))  # Always finite
-
-For complete interactive examples demonstrating all diagnostic features, see the ``03_advanced_diagnostics.ipynb`` notebook in ``docs/notebooks/``.

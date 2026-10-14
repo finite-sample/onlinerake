@@ -44,10 +44,7 @@ Core modules in `onlinerake/`:
 - `online_raking_sgd.py` - SGD-based streaming raking algorithm 
 - `online_raking_mwu.py` - MWU-based algorithm (inherits from SGD)
 
-Interactive documentation in `docs/notebooks/`:
-- `01_getting_started.ipynb` - Introduction with visual demonstrations
-- `02_performance_comparison.ipynb` - Algorithm benchmarking and performance analysis
-- `03_advanced_diagnostics.ipynb` - Convergence monitoring and diagnostic tools
+Documentation examples in `docs/examples/` are sphinx-gallery scripts (`plot_*.py`) executed during the docs build.
 
 Both raking classes follow scikit-learn's `partial_fit` pattern: call `.partial_fit(obs)` for each observation and inspect `.margins`, `.loss`, and `.effective_sample_size` properties.
 
@@ -60,15 +57,12 @@ uv sync --all-groups
 # Run the test suite with coverage
 uv run pytest --cov --cov-report=term
 
-# Run interactive tutorials
-jupyter notebook docs/notebooks/
-
 # Code quality checks (zero tolerance)
 uv run ruff check .
 uv run ruff format --check .
 uv run pyright
 
-# Build documentation (executes the notebooks; warnings are errors)
+# Build documentation (executes the examples; warnings are errors)
 uv run sphinx-build -W -b html docs _site
 
 # Run comprehensive head-to-head evaluation (quick mode)

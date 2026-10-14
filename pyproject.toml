@@ -60,21 +60,14 @@ docs = [
     "myst-parser",
     "sphinx-copybutton",
     "py-canon @ git+https://github.com/gojiplus/py-canon@v1",
-    # The docs embed three example notebooks. nbsphinx shells out to a `pandoc`
-    # binary that the shared docs workflow's runner does not have and cannot be
-    # told to apt-get; pypandoc-binary ships one inside its wheel, and conf.py
-    # puts it on PATH.
-    "nbsphinx>=0.9",
-    "pypandoc-binary>=1.15",
-    "ipykernel>=6",
+    # sphinx-gallery runs the scripts in docs/examples during the build.
+    "sphinx-gallery>=0.19",
     "matplotlib>=3.5",
-    "seaborn>=0.11",
 ]
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-exclude = ["docs/notebooks/*.ipynb"]
 
 [tool.ruff.lint]
 external = ["DOC"]
@@ -103,6 +96,7 @@ convention = "google"
 # `X` is the design matrix (see the naming note below).
 "tests/**" = ["S101", "D", "ARG", "SLF", "N803", "N806"]
 "docs/**" = ["D"]
+"docs/examples/*.py" = ["D", "T201"]
 "__init__.py" = ["F401"]
 # Demonstration and evaluation scripts. Printing the result is what they exist
 # to do, and none of them is importable API with a docstring obligation.
