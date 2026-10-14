@@ -41,7 +41,7 @@ def arrival_weight(
     min_weight: float,
     max_weight: float,
 ) -> float:
-    """Minimize D(w, d) + (c/2)||residual + w * delta||^2 over [min, max].
+    """Minimize D(w, d) + (c/2)||residual + w * delta||^2 over w/d in [min, max].
 
     Setting the derivative log(w/d) + c delta.r + c q w to zero, with
     q = ||delta||^2 and u = c q w, gives u + log u = log(c q d) - c delta.r,
@@ -53,8 +53,8 @@ def arrival_weight(
         residual: Running totals sum_i w_i (x_i - t) before this row.
         design_weight: The row's base weight d.
         strength: Calibration strength c.
-        min_weight: Lower weight bound.
-        max_weight: Upper weight bound.
+        min_weight: Lower bound on w / d.
+        max_weight: Upper bound on w / d.
 
     Returns:
         The arriving row's weight.
@@ -65,7 +65,7 @@ def arrival_weight(
     else:
         y = log(strength * q * design_weight) - strength * float(delta @ residual)
         weight = float(np.real(wrightomega(y))) / (strength * q)
-    return min(max(weight, min_weight), max_weight)
+    return min(max(weight, min_weight * design_weight), max_weight * design_weight)
 
 
 class StreamingRaker:
@@ -77,8 +77,15 @@ class StreamingRaker:
             values match the targets more closely at the cost of more
             variable weights. Default 0.3, which held up across the easy,
             extreme-target and many-margin scenarios in ms/onlinerake.pdf.
-        min_weight: Lower weight bound. Default 0.001.
-        max_weight: Upper weight bound. Default 100.
+            The penalty is on totals, so c assumes design weights near 1 and
+            continuous features in standardized units: multiplying design
+            weights by s acts like multiplying c by s, and measuring a feature
+            in dollars instead of thousands multiplies its share of the
+            penalty by a million. Rescale design weights to mean 1 and
+            continuous features to unit spread first.
+        min_weight: Lower bound on a row's weight relative to its design
+            weight, w / d. Default 0.001.
+        max_weight: Upper bound on w / d. Default 100.
         outcomes: Names of outcomes whose weighted means to track.
         keep_weights: Store each assigned weight. Off by default, which keeps
             memory independent of stream length.

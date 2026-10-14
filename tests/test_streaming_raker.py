@@ -24,7 +24,7 @@ def _first_order_root(delta, residual, design_weight, strength):
             + strength * float(delta @ delta) * w
         )
 
-    lo, hi = np.log(1e-12), np.log(1e12)
+    lo, hi = np.log(1e-12 * design_weight), np.log(1e12 * design_weight)
     for _ in range(200):
         mid = 0.5 * (lo + hi)
         if slope(np.exp(mid)) > 0:
@@ -99,8 +99,19 @@ def test_infeasible_targets_stay_finite_and_bounded():
     w = raker.weights
     assert np.all((w >= 1e-3) & (w <= 100.0))
     assert np.all(np.isfinite(raker.residuals))
-    # a + b = 1 in every row, so the best attainable loss is 2 * 0.4**2.
-    assert raker.loss >= 0.32 - 1e-9
+    # a + b = 1 in every row, so no weighting gets below 2 * 0.4**2; the stream
+    # should reach that floor, not merely stay above it.
+    assert raker.loss == pytest.approx(0.32, abs=1e-4)
+
+
+def test_bounds_apply_to_weight_relative_to_design_weight():
+    # An expansion weight of 5,000 with almost no calibration pull must stay
+    # near 5,000: the bounds limit w / d, they do not cap w at 100.
+    delta = np.array([0.5])
+    weight = arrival_weight(delta, np.zeros(1), 5000.0, 1e-12, 1e-3, 100.0)
+    assert weight == pytest.approx(5000.0, rel=1e-6)
+    low = arrival_weight(delta, np.array([1e6]), 5000.0, 1.0, 1e-3, 100.0)
+    assert low == pytest.approx(5.0)
 
 
 @pytest.mark.parametrize("strength", [1e-12, 1e12])
@@ -298,8 +309,8 @@ def test_fixed_step_gradient_update_does_not_calibrate():
     """Why StreamingRaker solves for the arriving weight exactly.
 
     A fixed step on the gradient (1/W) * sum_j (m_j - t_j)(x_j - m_j) moves the
-    arriving weight by O(1/k^2) after k rows, so margins stay at their
-    unweighted values.
+    arriving weight by O(1/k) after k rows. The moves sum to O(log n) against a
+    total weight of n, so margins stay at their unweighted values.
     """
     targets, rows, target = _easy_stream(3000, 8, 4)
     totals = np.zeros(8)

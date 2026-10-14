@@ -35,6 +35,11 @@ print(round(raker.estimate("spend"), 1))  # 15.3; the unweighted mean is 13.25
 arrive with base weights, and `keep_weights=True` to store the assigned weights
 (this makes memory grow with the stream).
 
+The default `calibration_strength` assumes design weights near 1 and continuous
+features in standardized units. Rescale expansion weights to mean 1 (weighted
+means do not change) and measure continuous features in units where their spread
+is about 1, for example income in tens of thousands rather than dollars.
+
 ## Which Tool
 
 | Your situation | Use |
@@ -47,9 +52,9 @@ Measured cost per arriving row, eight margins (`eval_outputs/streaming_scaling.c
 
 | Rows | `StreamingRaker` | IPF refit every 1,000 rows (amortized) |
 |---:|---:|---:|
-| 10,000 | 16 µs | 42 µs |
-| 100,000 | 19 µs | 526 µs |
-| 1,000,000 | 17 µs | 5,684 µs |
+| 10,000 | 10 µs | 21 µs |
+| 100,000 | 13 µs | 150 µs |
+| 1,000,000 | 10 µs | 1,314 µs |
 
 The manuscript in [`ms/onlinerake.pdf`](ms/onlinerake.pdf) derives the update and
 evaluates it in six simulated scenarios with 50 replications each. With moderate
@@ -162,9 +167,8 @@ threshold, call `.check_convergence(tolerance=...)`. Batch IPF instead checks th
 maximum absolute margin error against its `tolerance`. A stalled or infeasible
 fit does not count as converged.
 
-Unsupported numerical regret/loss-bound helpers have been removed. The learning
-rate helper is now `suggest_mwu_learning_rate`, explicitly an empirical tuning
-heuristic.
+`suggest_mwu_learning_rate` gives an empirical starting point for tuning the MWU
+learning rate.
 
 ### Diagnostics
 
@@ -231,11 +235,9 @@ print(f"Batch loss: {batch_raker.loss:.6f}")
 | `n_sgd_steps` | 3 | Gradient steps per observation |
 | `convergence_window` | 20 | Minimum observations before reporting convergence |
 
-## Upgrading from 2.0.0
+## Upgrading from 2.x
 
-See the [3.0.0 upgrade notes](https://github.com/finite-sample/onlinerake/blob/main/CHANGELOG.md)
-for removed bound helpers, the renamed learning-rate heuristic, changed decay
-floors, and corrected convergence reporting.
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 

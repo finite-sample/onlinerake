@@ -282,7 +282,7 @@ def scaling(out_dir, sizes):
                 raker.partial_fit(obs)
             writer.writerow([n, "stream_c0.3", (time.perf_counter() - start) / n])
             start = time.perf_counter()
-            ipf_weights(targets, dicts)
+            ipf_factors(x, np.full(8, 0.5))
             writer.writerow(
                 [
                     n,

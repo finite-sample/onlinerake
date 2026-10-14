@@ -209,8 +209,9 @@ marimo/_lsp/
 __marimo__/
 .DS_Store
 
-# Evaluation outputs
-eval_outputs/
+# Evaluation outputs; the streaming CSVs behind ms/ are kept
+eval_outputs/*
+!eval_outputs/streaming_*.csv
 outputs/
 
 # Generated figures

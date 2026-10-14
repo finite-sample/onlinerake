@@ -25,6 +25,12 @@ totals, so memory does not grow with the stream:
 
 **design_weight**
    Pass ``design_weight=`` to ``partial_fit`` for rows with base weights.
+   Rescale them to mean 1 first; the bounds ``min_weight`` and ``max_weight``
+   apply to the ratio of a row's weight to its design weight.
+
+**Units**
+   The default strength assumes continuous features in units where their
+   spread is about 1, for example income in tens of thousands of dollars.
 
 **keep_weights**
    ``StreamingRaker(..., keep_weights=True)`` stores each assigned weight in
