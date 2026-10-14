@@ -7,7 +7,7 @@ onlinerake: Streaming Survey Raking
 
    installation
    quickstart
-   notebooks
+   auto_examples/index
    diagnostics
    api_reference
    software-audit

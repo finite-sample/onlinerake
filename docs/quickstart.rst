@@ -133,7 +133,7 @@ Parameter Tuning
 Next Steps
 ----------
 
-- See :doc:`notebooks` for worked, executable tutorials
+- See :doc:`auto_examples/index` for worked examples
 - Check :doc:`api_reference` for complete parameter descriptions
 - Browse `examples/ <https://github.com/finite-sample/onlinerake/tree/main/examples>`_
   for realistic end-to-end use cases

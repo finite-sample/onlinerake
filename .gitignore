@@ -227,3 +227,5 @@ ms/onlinerake.out
 *.blg
 *.fls
 *.fdb_latexmk
+docs/auto_examples/
+docs/sg_execution_times.rst
