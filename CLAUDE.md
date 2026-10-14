@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`onlinerake` is a Python package for streaming survey raking (weight calibration) using two algorithms:
-- **SGD raking** (`OnlineRakingSGD`) - stochastic gradient descent with additive updates
-- **MWU raking** (`OnlineRakingMWU`) - multiplicative weights update with exponential updates
+`onlinerake` is a Python package for streaming survey raking (weight calibration):
+- **Streaming raker** (`StreamingRaker`) - fixed memory: each arriving row gets a closed-form weight (Wright omega) against `p + 4` running totals; earlier weights never change
+- **Penalized raking** (`fit_penalized_raking`) - the same objective minimized over all stored rows
+- **SGD raking** (`OnlineRakingSGD`) and **MWU raking** (`OnlineRakingMWU`) - store every row and re-optimize all weights at each arrival
 
-The package enables real-time weight adjustment for streaming survey data to match known population margins, unlike traditional batch IPF methods.
+Recommendation in the docs and `ms/onlinerake.pdf`: when rows can be stored, refit `BatchIPF` periodically; when they cannot, use `StreamingRaker`.
 
 ## Recent Major Updates
 
@@ -38,6 +39,7 @@ The package enables real-time weight adjustment for streaming survey data to mat
 ## Architecture
 
 Core modules in `onlinerake/`:
+- `streaming_raker.py` - `StreamingRaker`, `arrival_weight`, `fit_penalized_raking`
 - `targets.py` - Defines `Targets` dataclass for population margins (age, gender, education, region)
 - `online_raking_sgd.py` - SGD-based streaming raking algorithm 
 - `online_raking_mwu.py` - MWU-based algorithm (inherits from SGD)

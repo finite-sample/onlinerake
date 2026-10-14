@@ -14,6 +14,8 @@ Core Classes
    :nosignatures:
 
    Targets
+   StreamingRaker
+   fit_penalized_raking
    OnlineRakingSGD
    OnlineRakingMWU
    BatchIPF

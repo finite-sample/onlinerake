@@ -18,6 +18,9 @@ The class is a drop-in replacement for
 :class:`~onlinerake.online_raking_sgd.OnlineRakingSGD`; it shares
 nearly the same API and internal metrics.  See the base class for
 attribute definitions and usage examples.
+
+When past rows can be stored, rerunning ``BatchIPF`` periodically is cheaper and
+exact at each refit. When they cannot, use ``StreamingRaker``.
 """
 
 from __future__ import annotations

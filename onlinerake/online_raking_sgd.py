@@ -12,6 +12,9 @@ The implementation retains and revisits past observations: for n rows, d
 features, and K steps, each arrival costs O(n*d*K) time and uses O(n*d) memory.
 
 The class follows the scikit-learn ``partial_fit`` API pattern.
+
+When past rows can be stored, rerunning ``BatchIPF`` periodically is cheaper and
+exact at each refit. When they cannot, use ``StreamingRaker``.
 """
 
 from __future__ import annotations

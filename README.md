@@ -5,25 +5,14 @@
 [![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://finite-sample.github.io/onlinerake/)
 [![CI](https://github.com/finite-sample/onlinerake/actions/workflows/ci.yml/badge.svg)](https://github.com/finite-sample/onlinerake/actions/workflows/ci.yml)
 
-**Real-time survey weighting for streaming data.**
+**Rake a stream without storing it.**
 
-## The Problem
-
-You're collecting survey responses or observational data one record at a time. Your sample doesn't match population demographics—too many young respondents, too few from certain regions. Traditional weighting methods (raking/IPF) require reprocessing the entire dataset whenever a new response arrives.
-
-**onlinerake** updates weights as observations arrive, reducing squared error
-between weighted margins and population targets. Each update revisits all retained
-observations: memory is O(n × d), work per arrival is O(n × d × n_sgd_steps),
-and total work grows quadratically with stream length for fixed feature count.
-Check the remaining margin errors; a finite number of updates need not balance
-all targets.
-
-## When to Use This
-
-- **Online surveys** where responses arrive continuously
-- **A/B tests** that need demographic balance during collection
-- **Passive data collection** (app usage, sensor data) requiring real-time calibration
-- **Moderate streams** where updating retained weights after every arrival is affordable
+Raking adjusts weights so that weighted shares of groups (women, college
+graduates, people over 65) match known population shares. The standard
+algorithm, iterative proportional fitting (IPF), needs every row seen so far.
+`StreamingRaker` keeps a fixed set of running totals instead: each arriving row
+gets its weight in closed form, earlier weights never change, and memory does
+not grow with the stream.
 
 ## Quick Start
 
@@ -32,16 +21,71 @@ pip install onlinerake
 ```
 
 ```python
+from onlinerake import StreamingRaker, Targets
+
+raker = StreamingRaker(Targets(female=0.5), outcomes=["spend"])
+for female, spend in [(1, 10.0), (1, 12.0), (1, 11.0), (0, 20.0)] * 50:
+    raker.partial_fit({"female": female}, outcomes={"spend": spend})
+
+print(round(raker.margins["female"], 2))  # 0.52; the raw sample is 75% female
+print(round(raker.estimate("spend"), 1))  # 15.3; the unweighted mean is 13.25
+```
+
+`partial_fit` returns the row's weight. Pass `design_weight=` for rows that
+arrive with base weights, and `keep_weights=True` to store the assigned weights
+(this makes memory grow with the stream).
+
+The default `calibration_strength` assumes design weights near 1 and continuous
+features in standardized units. Rescale expansion weights to mean 1 (weighted
+means do not change) and measure continuous features in units where their spread
+is about 1, for example income in tens of thousands rather than dollars.
+
+## Which Tool
+
+| Your situation | Use |
+|---|---|
+| Rows can be stored and the stream is survey-sized | Refit `BatchIPF` periodically. It is exact at each refit and gives the highest effective sample size. |
+| Rows cannot or should not be stored, memory is fixed, or the stream is long | `StreamingRaker`: `p + 4` numbers of state for `p` margins, constant cost per row. |
+| You want the batch version of the streaming objective | `fit_penalized_raking` |
+
+Measured cost per arriving row, eight margins (`eval_outputs/streaming_scaling.csv`):
+
+| Rows | `StreamingRaker` | IPF refit every 1,000 rows (amortized) |
+|---:|---:|---:|
+| 10,000 | 10 µs | 21 µs |
+| 100,000 | 13 µs | 150 µs |
+| 1,000,000 | 10 µs | 1,314 µs |
+
+The manuscript in [`ms/onlinerake.pdf`](ms/onlinerake.pdf) derives the update and
+evaluates it in six simulated scenarios with 50 replications each. With moderate
+targets, the error of a weighted outcome mean at the end of the stream is at most
+27% above full-data IPF. During the stream, it tracks the margins more closely
+than IPF refit every 1,000 rows in five of six scenarios. It does worse with
+extreme targets and with 50 margins, and its estimates depend on arrival order.
+
+### How it works
+
+Each row's weight minimizes its raking distance from its design weight plus
+`calibration_strength / 2` times the squared running gap between weighted and
+target totals. That one-variable problem has a closed-form solution through the
+Wright omega function. Larger `calibration_strength` (default 0.3) matches the
+targets more closely at the cost of more variable weights.
+
+`fit_penalized_raking(features, targets, calibration_strength)` minimizes the
+same objective over all stored rows at once (entropy balancing with a ridge
+penalty, which approaches IPF as the strength grows).
+
+## Online Classes That Store Every Row
+
+`OnlineRakingSGD` and `OnlineRakingMWU` store every row and re-optimize all
+weights at each arrival, so their cost per row grows with the stream. When rows
+can be stored, periodic `BatchIPF` is cheaper and exact at each refit; when they
+cannot, use `StreamingRaker`.
+
+```python
 from onlinerake import OnlineRakingSGD, Targets
 
-# Define population targets (proportion with indicator = 1)
-targets = Targets(
-    female=0.51,  # 51% female in population
-    college=0.32,  # 32% college educated
-    age_65_plus=0.17,  # 17% age 65+
-)
-
-# Create raker
+targets = Targets(female=0.51, college=0.32, age_65_plus=0.17)
 raker = OnlineRakingSGD(targets, learning_rate=5.0)
 
 survey_stream = [
@@ -50,20 +94,14 @@ survey_stream = [
     {"female": 1, "college": 1, "age_65_plus": 0},
     {"female": 0, "college": 0, "age_65_plus": 0},
 ]
-
-# Replace this list with your incoming responses.
 for response in survey_stream:
     raker.partial_fit(response)
 
-    # Check current state anytime
-    print(f"Weighted margins: {raker.margins}")
-    print(f"Effective sample size: {raker.effective_sample_size:.0f}")
-
-# Get final weights
+print(raker.margins, raker.effective_sample_size)
 weights = raker.weights
 ```
 
-## Which Algorithm?
+### Additive or multiplicative updates
 
 | Update | Algorithm | Default learning rate |
 |--------|-----------|-----------------------|
@@ -80,7 +118,7 @@ Learning rates need evaluation on the intended data, particularly when continuou
 features use different units. Better target balance can require more unequal
 weights, reducing effective sample size.
 
-## Performance
+### Performance
 
 Run `python examples/streaming_mwu.py` for a reproducible evaluation with 10
 seeds and 500 arrivals per stream. With the default MWU settings, mean squared
@@ -89,8 +127,6 @@ margin error over arrivals 100–500 falls by 83% in the stationary binary case,
 Mean final effective sample sizes are 292, 383, and 155 out of 500, respectively.
 These simulations measure calibration on the accumulated sample; they do not
 establish improved outcome estimates or a general performance guarantee.
-
-## Features
 
 ### Continuous Covariates
 
@@ -131,9 +167,8 @@ threshold, call `.check_convergence(tolerance=...)`. Batch IPF instead checks th
 maximum absolute margin error against its `tolerance`. A stalled or infeasible
 fit does not count as converged.
 
-Unsupported numerical regret/loss-bound helpers have been removed. The learning
-rate helper is now `suggest_mwu_learning_rate`, explicitly an empirical tuning
-heuristic.
+`suggest_mwu_learning_rate` gives an empirical starting point for tuning the MWU
+learning rate.
 
 ### Diagnostics
 
@@ -167,6 +202,14 @@ print(f"Batch loss: {batch_raker.loss:.6f}")
 
 ### Core Classes
 
+**`StreamingRaker(targets, calibration_strength=0.3, outcomes=())`** - Fixed-memory streaming raker
+- `.partial_fit(obs, design_weight=1.0, outcomes=None)` - Weight one row; returns its weight
+- `.margins`, `.loss`, `.effective_sample_size` - Current state
+- `.estimate(name)`, `.estimates` - Weighted outcome means
+- `.weights` - Assigned weights (requires `keep_weights=True`)
+
+**`fit_penalized_raking(features, targets, calibration_strength=0.3)`** - Same objective, all rows at once
+
 **`Targets(**features)`** - Define population margins
 - Binary features: `female=0.51` (proportion = 1)
 - Continuous features: `age=(42.0, "mean")` (target mean)
@@ -192,11 +235,9 @@ print(f"Batch loss: {batch_raker.loss:.6f}")
 | `n_sgd_steps` | 3 | Gradient steps per observation |
 | `convergence_window` | 20 | Minimum observations before reporting convergence |
 
-## Upgrading from 2.0.0
+## Upgrading from 2.x
 
-See the [3.0.0 upgrade notes](https://github.com/finite-sample/onlinerake/blob/main/CHANGELOG.md)
-for removed bound helpers, the renamed learning-rate heuristic, changed decay
-floors, and corrected convergence reporting.
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 
@@ -250,8 +291,5 @@ MIT
 
 ## Implementation audit
 
-See [the software audit](https://finite-sample.github.io/onlinerake/software-audit.html) for reproduced defects, regression
-checks, and the relationship to the retired `adaptive-eb` prototype. The historical
-manuscript in `ms/` describes an update that changes only the newest row and reports
-O(Kp) cost; it is not documentation of this implementation and its performance and
-convergence claims should not be used for this package.
+See [the software audit](https://finite-sample.github.io/onlinerake/software-audit.html)
+for reproduced defects and their regression checks.

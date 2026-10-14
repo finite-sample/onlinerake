@@ -12,54 +12,41 @@ onlinerake: Streaming Survey Raking
    api_reference
    software-audit
 
-Modern online surveys and passive data collection streams generate
-responses one record at a time. Classic weighting methods such as
-iterative proportional fitting (IPF, or "raking") and calibration
-weighting are inherently *batch* procedures: they reprocess the entire
-dataset whenever a new case arrives. The ``onlinerake`` package
-provides **incremental**, per‑observation updates to survey weights so
-that weighted margins track known population totals in real time.
+Raking adjusts weights so that weighted shares of groups match known
+population shares. The standard algorithm, iterative proportional fitting
+(IPF), needs every row seen so far. ``StreamingRaker`` rakes a stream without
+storing it: its state is ``p + 4`` running totals for ``p`` margins, each
+arriving row gets its weight in closed form, and the cost per row does not grow
+with the stream.
 
-Key Features
-------------
+Which Tool
+----------
 
-- **Real-time weight calibration** for streaming survey data
-- **Two complementary algorithms**: SGD and multiplicative weights update (MWU)
-- **scikit-learn style API** with ``partial_fit`` method
-- **Minimal dependencies**: only numpy and pandas
-- **Comprehensive testing** with realistic examples
+- **Rows can be stored** and the stream is survey-sized: refit ``BatchIPF``
+  periodically. It is exact at each refit.
+- **Rows cannot or should not be stored**, memory is fixed, or the stream is
+  long: ``StreamingRaker``.
+- ``fit_penalized_raking`` minimizes the streaming objective over all stored
+  rows at once.
+- ``OnlineRakingSGD`` and ``OnlineRakingMWU`` store every row and re-optimize
+  all weights at each arrival.
 
 Quick Start
 -----------
 
 .. code-block:: python
 
-   from onlinerake import OnlineRakingSGD, Targets
+   from onlinerake import StreamingRaker, Targets
 
-   # Define target population margins
-   targets = Targets(feature_a=0.5, feature_b=0.51, feature_c=0.4, feature_d=0.3)
-   
-   # Create raker
-   raker = OnlineRakingSGD(targets, learning_rate=5.0)
-   
-   # Process streaming observations
-   for obs in stream_of_observations:
-       raker.partial_fit(obs)
-       print(f"Current margins: {raker.margins}")
+   raker = StreamingRaker(Targets(female=0.5), outcomes=["spend"])
+   for female, spend in [(1, 10.0), (1, 12.0), (1, 11.0), (0, 20.0)] * 50:
+       raker.partial_fit({"female": female}, outcomes={"spend": spend})
 
-💡 **New to OnlineRake?** Start with our `Interactive Notebooks <notebooks.html>`_ for hands-on tutorials with visualizations!
+   print(round(raker.margins["female"], 2))  # 0.52
+   print(round(raker.estimate("spend"), 1))  # 15.3
 
-Algorithms
-----------
-
-**SGD Raking**
-   Stochastic gradient descent on squared-error loss over margins.
-   Produces smooth weight trajectories and maintains high effective sample size.
-
-**MWU Raking** 
-   Multiplicative weights update inspired by mirror descent under KL divergence.
-   Reduces squared moment error using bounded multiplicative updates. The
-   weights depend on arrival order and need not equal a full-sample IPF fit.
+The manuscript in ``ms/onlinerake.pdf`` derives the update and evaluates it
+against full-data and periodic IPF.
 
 Indices and tables
 ==================
