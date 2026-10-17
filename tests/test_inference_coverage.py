@@ -442,7 +442,7 @@ class TestModelAssistedInterval:
     """Does the new GREG interval cover, and is its standard error honest?
 
     The estimate was already known to be unbiased. An interval can still fail in
-    two ways around an unbiased centre -- a standard error that does not match
+    two ways around an unbiased center -- a standard error that does not match
     the estimator's spread, and a coverage rate that misses -- so both are gated
     rather than one being inferred from the other.
     """

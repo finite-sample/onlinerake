@@ -151,3 +151,6 @@ source = ["onlinerake"]
 [tool.deptry]
 # The manuscript directory holds LaTeX and figures, not importable code.
 extend_exclude = ["ms"]
+
+[tool.codespell]
+builtin = "clear,rare,en-GB_to_en-US"

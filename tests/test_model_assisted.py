@@ -727,7 +727,7 @@ class TestReplicatesRefitTheSameEstimator:
         """``residual_weight`` conditions the gradient on an outcome existing.
 
         Replaying rows without outcomes silently switched the penalty off, so
-        the replicate minimised a different objective.
+        the replicate minimized a different objective.
         """
         from onlinerake.diagnostics import _refit_margins
 

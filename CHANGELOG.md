@@ -226,7 +226,7 @@ lives on the quantity that can carry it.
   diagnostics: `analyze_convergence` reads the schedule, so it certified
   Robbins-Monro compliance for a raker that was not running one — and this
   package documents constant rates as *not* satisfying Robbins-Monro. Found by
-  the API-consistency test comparing annotations, not by a behavioural test.
+  the API-consistency test comparing annotations, not by a behavioral test.
 - **`OnlineRakingMWU` narrowed two of its parent's annotations.**
   `max_history` was `int` against the parent's `int | None`, and
   `learning_rate` was `float` against `float | LearningRateSchedule`. Runtime

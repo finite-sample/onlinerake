@@ -1,8 +1,8 @@
 """One name per concept, one order per pair, across the public API.
 
 These are cheap to write and cheap to run, and they catch the class of defect
-that no behavioural test can: a function that works perfectly but disagrees with
-its neighbours about what an argument is called or where it goes. That
+that no behavioral test can: a function that works perfectly but disagrees with
+its neighbors about what an argument is called or where it goes. That
 disagreement is only visible if you read the whole API at once, which nobody
 does.
 
@@ -104,7 +104,7 @@ class TestTheSchemesAgree:
 
     @pytest.mark.parametrize("name", REPLICATION)
     def test_same_names_and_same_defaults(self, name):
-        """Differing defaults across these would be a silent behaviour change
+        """Differing defaults across these would be a silent behavior change
         depending on which one the caller reached for.
         """
         sig = inspect.signature(getattr(onlinerake, name))

@@ -495,7 +495,7 @@ class TestTheNumericalFallbackRuns:
 
     This existed untested, and the 2.0.0 rename of ``T`` to ``n_steps`` left a
     stale reference inside it. Nothing failed: no test constructs a schedule
-    whose ``get_params()['type']`` is unrecognised, so the branch never
+    whose ``get_params()['type']`` is unrecognized, so the branch never
     executed. ruff caught the undefined name; this stops the next one being
     caught by a user.
     """
@@ -556,7 +556,7 @@ class TestUnestimableIsNotZero:
 
 
 class TestMWUActuallyStepsItsSchedule:
-    """Accepting a schedule and honouring one are different things.
+    """Accepting a schedule and honoring one are different things.
 
     ``OnlineRakingMWU`` took a ``LearningRateSchedule``, stored it, and
     reported ``uses_lr_schedule is True`` -- while its update read
