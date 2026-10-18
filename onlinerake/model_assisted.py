@@ -389,26 +389,7 @@ class ModelAssistedRaker(OnlineRakingSGD):
         self._weights[self._n_obs] = 1.0
         self._n_obs += 1
 
-        # Perform SGD steps
-        final_gradient_norm = 0.0
-        for step in range(self.n_sgd_steps):
-            grad = self._compute_gradient()
-            gradient_norm = float(np.linalg.norm(grad))
-            if step == self.n_sgd_steps - 1:
-                final_gradient_norm = gradient_norm
-
-            self._weights[: self._n_obs] -= current_lr * grad
-            np.clip(
-                self._weights[: self._n_obs],
-                self.min_weight,
-                self.max_weight,
-                out=self._weights[: self._n_obs],
-            )
-
-            if step == 0:
-                self._log_update("GREG Obs", gradient_norm)
-
-        # Record state
+        final_gradient_norm = self._sgd_update(current_lr, "GREG Obs")
         self._record_state(gradient_norm=final_gradient_norm)
 
     @property

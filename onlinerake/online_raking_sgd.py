@@ -807,24 +807,36 @@ class OnlineRakingSGD:
         self._weights[self._n_obs] = 1.0
         self._n_obs += 1
 
+        final_gradient_norm = self._sgd_update(current_lr, "Obs")
+        self._record_state(gradient_norm=final_gradient_norm)
+
+    def _sgd_update(self, current_lr: float, log_prefix: str) -> float:
+        """Take ``n_sgd_steps`` clipped gradient steps on the active weights.
+
+        Subclasses that change the loss override ``_compute_gradient`` and call
+        this, so every raker updates its weights the same way.
+
+        Args:
+            current_lr: Step size for this observation.
+            log_prefix: Label for the verbose log line after the first step.
+
+        Returns:
+            float: Gradient norm at the last step.
+        """
         # Capture pre-update weights for KL tracking (if enabled)
         pre_update_weights: np.ndarray | None = None
         if self.track_kl_divergence:
             pre_update_weights = self._weights[: self._n_obs].copy()
 
-        # perform n_sgd_steps updates
         final_gradient_norm = 0.0
         for step in range(self.n_sgd_steps):
             grad = self._compute_gradient()
 
-            # Calculate gradient norm for convergence monitoring
             gradient_norm = float(np.linalg.norm(grad))
-            if step == self.n_sgd_steps - 1:  # Store only final gradient norm
+            if step == self.n_sgd_steps - 1:
                 final_gradient_norm = gradient_norm
 
-            # Update only active weights
             self._weights[: self._n_obs] -= current_lr * grad
-            # clip weights
             np.clip(
                 self._weights[: self._n_obs],
                 self.min_weight,
@@ -832,9 +844,8 @@ class OnlineRakingSGD:
                 out=self._weights[: self._n_obs],
             )
 
-            # Verbose output for debugging
             if step == 0:
-                self._log_update("Obs", gradient_norm)
+                self._log_update(log_prefix, gradient_norm)
 
         # Track KL divergence between consecutive updates
         if self.track_kl_divergence and pre_update_weights is not None:
@@ -844,8 +855,7 @@ class OnlineRakingSGD:
             kl = kl_divergence_weights(post_update_weights, pre_update_weights)
             self._kl_history.append(kl)
 
-        # record state with final gradient norm
-        self._record_state(gradient_norm=final_gradient_norm)
+        return final_gradient_norm
 
     def partial_fit_batch(self, observations: list[dict[str, Any] | Any]) -> None:
         """Process multiple observations in batch.
