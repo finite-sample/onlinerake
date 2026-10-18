@@ -346,6 +346,20 @@ class TestModelAssistedRaker:
 
         assert total == demo_loss + pred_loss
 
+    def test_kl_tracking_follows_the_inherited_flag(self):
+        """Setting track_kl_divergence records KL, as it does for the base raker."""
+        targets = ModelAssistedTargets(
+            demographic_targets=Targets(female=0.5, college=0.3)
+        )
+        raker = ModelAssistedRaker(targets=targets, model=self.create_simple_model())
+        raker.track_kl_divergence = True
+
+        for female, college in [(0, 1), (1, 0), (1, 1)]:
+            raker.partial_fit({"female": female, "college": college})
+
+        assert len(raker.kl_divergence_history) == 3
+        assert raker.cumulative_kl_divergence > 0
+
 
 class TestPoststratificationCells:
     """Test PoststratificationCells."""
