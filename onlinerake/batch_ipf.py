@@ -195,14 +195,7 @@ class BatchIPF:
                 supports binary features. Use OnlineRakingSGD or OnlineRakingMWU
                 for continuous features.
         """
-        # Check for continuous features
-        if self.targets.has_continuous_features:
-            continuous = self.targets.continuous_features
-            raise ValueError(
-                f"BatchIPF only supports binary features. "
-                f"Continuous features found: {continuous}. "
-                f"Use OnlineRakingSGD or OnlineRakingMWU for continuous features."
-            )
+        self._require_binary_features()
 
         self._features = self._extract_features(observations)
         self._n_obs = len(observations)
@@ -211,6 +204,25 @@ class BatchIPF:
         self._converged = False
         self._n_iterations = 0
 
+        self._run_ipf()
+        return self
+
+    def _require_binary_features(self) -> None:
+        """Reject targets with continuous features, which IPF cannot rake.
+
+        Raises:
+            ValueError: If targets contain continuous features.
+        """
+        if self.targets.has_continuous_features:
+            continuous = self.targets.continuous_features
+            raise ValueError(
+                f"BatchIPF only supports binary features. "
+                f"Continuous features found: {continuous}. "
+                f"Use OnlineRakingSGD or OnlineRakingMWU for continuous features."
+            )
+
+    def _run_ipf(self) -> None:
+        """Rake ``self._weights`` to the targets by iterative proportional fitting."""
         for iteration in range(self.max_iterations):
             self._n_iterations = iteration + 1
 
@@ -272,8 +284,6 @@ class BatchIPF:
                 self._loss_history.append(new_loss)
                 break
 
-        return self
-
     def fit_incremental(
         self,
         new_observations: list[dict[str, Any] | Any],
@@ -294,14 +304,7 @@ class BatchIPF:
                 supports binary features. Use OnlineRakingSGD or OnlineRakingMWU
                 for continuous features.
         """
-        # Check for continuous features
-        if self.targets.has_continuous_features:
-            continuous = self.targets.continuous_features
-            raise ValueError(
-                f"BatchIPF only supports binary features. "
-                f"Continuous features found: {continuous}. "
-                f"Use OnlineRakingSGD or OnlineRakingMWU for continuous features."
-            )
+        self._require_binary_features()
 
         # Extract new features
         new_features = self._extract_features(new_observations)
@@ -320,50 +323,5 @@ class BatchIPF:
         self._converged = False
         self._n_iterations = 0
 
-        # Re-run the same fitting procedure
-        for iteration in range(self.max_iterations):
-            self._n_iterations = iteration + 1
-            current_loss = self.loss
-            self._loss_history.append(current_loss)
-
-            for j in range(self._n_features):
-                feature_col = self._features[:, j]
-                target = self._target_array[j]
-
-                total_w = self._weights.sum()
-                if total_w <= 0:
-                    continue
-                weighted_sum = (self._weights * feature_col).sum()
-                current_margin = weighted_sum / total_w
-
-                if current_margin <= 0 or current_margin >= 1:
-                    continue
-
-                adjustment_1 = target / current_margin if current_margin > 0 else 1.0
-                adjustment_0 = (
-                    (1 - target) / (1 - current_margin) if current_margin < 1 else 1.0
-                )
-
-                self._weights = np.where(
-                    feature_col == 1,
-                    self._weights * adjustment_1,
-                    self._weights * adjustment_0,
-                )
-                np.clip(
-                    self._weights, self.min_weight, self.max_weight, out=self._weights
-                )
-
-            new_loss = self.loss
-            if (
-                self._n_obs
-                and max(
-                    abs(self.margins[name] - self.targets[name])
-                    for name in self._feature_names
-                )
-                <= self.tolerance
-            ):
-                self._converged = True
-                self._loss_history.append(new_loss)
-                break
-
+        self._run_ipf()
         return self
