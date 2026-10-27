@@ -52,7 +52,7 @@ test = [
     "pytest-cov>=6",
     # A git reference, so it stays in dependency-groups and out of the published
     # extras: PyPI rejects direct URL references in project metadata.
-    "simcheck @ git+https://github.com/finite-sample/simcheck",
+    "simcheck",
 ]
 docs = [
     "sphinx>=8",
@@ -154,3 +154,7 @@ extend_exclude = ["ms"]
 
 [tool.codespell]
 builtin = "clear,rare,en-GB_to_en-US"
+
+[tool.uv.sources]
+# The statistical test helper is unrelated to the simcheck package on PyPI.
+simcheck = { git = "https://github.com/finite-sample/simcheck" }
