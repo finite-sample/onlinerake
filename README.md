@@ -1,4 +1,4 @@
-# onlinerake
+# onlinerake: rake a stream without storing it
 
 [![PyPI version](https://img.shields.io/pypi/v/onlinerake.svg)](https://pypi.org/project/onlinerake/)
 [![PyPI Downloads](https://static.pepy.tech/badge/onlinerake)](https://pepy.tech/projects/onlinerake)
