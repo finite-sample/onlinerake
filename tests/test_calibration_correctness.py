@@ -50,6 +50,52 @@ def test_ipf_requires_actual_margin_tolerance():
     assert max(abs(raker.margins[k] - raker.targets[k]) for k in ["a", "b"]) <= 1e-8
 
 
+@pytest.mark.parametrize("reachable", [True, False])
+@pytest.mark.parametrize("incremental", [True, False])
+def test_ipf_margin_scans_and_fit_diagnostics(reachable, incremental):
+    class CountingIPF(BatchIPF):
+        margin_scans = 0
+
+        @property
+        def margins(self):
+            self.margin_scans += 1
+            return super().margins
+
+    rows = [
+        {"a": a, "b": b, "c": c if reachable else 0}
+        for a in (0, 1)
+        for b in (0, 1)
+        for c in (0, 1)
+    ]
+    raker = CountingIPF(Targets(a=0.25, b=0.5, c=0.75), max_iterations=2)
+    if incremental:
+        raker.fit(rows[:4])
+        raker.margin_scans = 0
+        raker.fit_incremental(rows[4:])
+    else:
+        raker.fit(rows)
+
+    # Independent binary columns give exact per-row weights after one sweep.
+    expected_weights = np.array(
+        [
+            (0.5 if row["a"] else 1.5)
+            * ((1.5 if row["c"] else 0.5) if reachable else 1.0)
+            for row in rows
+        ]
+    )
+    assert raker.converged == reachable
+    assert raker.n_iterations == (1 if reachable else 2)
+    assert raker.margin_scans <= 2 * raker.n_iterations + int(reachable)
+    assert_allclose(raker.weights, expected_weights)
+    assert raker.margins == {"a": 0.25, "b": 0.5, "c": 0.75 if reachable else 0.0}
+    assert raker.raw_margins == {"a": 0.5, "b": 0.5, "c": 0.5 if reachable else 0.0}
+    assert raker.loss == (0.0 if reachable else 0.75**2)
+    assert raker.loss_history == ([0.125, 0.0] if reachable else [0.625, 0.5625])
+    assert raker.effective_sample_size == pytest.approx(
+        expected_weights.sum() ** 2 / (expected_weights**2).sum()
+    )
+
+
 @pytest.mark.parametrize("cls", [OnlineRakingSGD, OnlineRakingMWU, BatchIPF])
 @pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf, 2, -1, "yes"])
 def test_invalid_binary_observations_are_rejected(cls, value):
