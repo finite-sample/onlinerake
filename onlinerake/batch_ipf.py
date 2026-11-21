@@ -270,18 +270,18 @@ class BatchIPF:
                     self._weights, self.min_weight, self.max_weight, out=self._weights
                 )
 
-            # Check convergence
-            new_loss = self.loss
+            if not self._n_obs:
+                continue
+            margins = self.margins
             if (
-                self._n_obs
-                and max(
-                    abs(self.margins[name] - self.targets[name])
+                max(
+                    abs(margins[name] - self.targets[name])
                     for name in self._feature_names
                 )
                 <= self.tolerance
             ):
                 self._converged = True
-                self._loss_history.append(new_loss)
+                self._loss_history.append(self.loss)
                 break
 
     def fit_incremental(
