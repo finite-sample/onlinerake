@@ -19,7 +19,7 @@ jobs:
     uses: gojiplus/py-canon/.github/workflows/reusable-ci.yml@v1
     with:
       # The reusable default starts at 3.11; this package requires >=3.12.
-      python-versions: '["3.12", "3.14"]'
+      python-versions: '["3.13", "3.14"]'
       wheel-import: onlinerake
       coverage-floor: 89
       run-preen: true
