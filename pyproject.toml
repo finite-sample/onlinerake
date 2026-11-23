@@ -7,7 +7,7 @@ name = "onlinerake"
 version = "3.2.0"
 description = "Survey raking on streams, in fixed memory"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [
     { name = "Gaurav Sood" }
 ]
@@ -17,7 +17,6 @@ keywords = ["survey", "raking", "calibration", "weighting", "streaming", "online
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Mathematics",
@@ -67,7 +66,7 @@ docs = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 external = ["DOC"]
@@ -135,7 +134,7 @@ typeCheckingMode = "standard"
 exclude = ["tests", "docs", "ms"]
 reportMissingImports = true
 reportMissingTypeStubs = false
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
